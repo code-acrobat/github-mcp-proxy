@@ -221,6 +221,13 @@ building hard tool denials:
   you can. For production use a fine-grained PAT limited to the target
   repositories (no workflow access); everything above narrows who may
   merge, not what the token can do elsewhere.
+- **Ask before variable lookups.** Actions secrets are write-only (the
+  API never returns their value), but Actions *variables* are plain text:
+  `gh variable list` and `gh api` print them with a normal token. Unless
+  every project keeps sensitive values out of variables, pin
+  `{ "action": "shell", "resource": "gh variable *", "effect": "ask" }`
+  and the same for `gh api *variables*` so a later broad `shell` allow
+  rule cannot wave them through.
 
 ## Alternatives
 
