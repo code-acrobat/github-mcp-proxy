@@ -228,6 +228,12 @@ building hard tool denials:
   `{ "action": "shell", "resource": "gh variable *", "effect": "ask" }`
   and the same for `gh api *variables*` so a later broad `shell` allow
   rule cannot wave them through.
+- **Ask before triggering pipelines.** A manual gate exists so a human
+  decides when a run proceeds; an agent pressing its own gate defeats the
+  point. The GitHub MCP has no workflow-trigger tool, but the shell does:
+  pin `{ "action": "shell", "resource": "gh workflow run *", "effect":
+  "ask" }` and `{ "action": "shell", "resource": "gh api *actions*",
+  "effect": "ask" }` (dispatches, reruns, cancels).
 
 ## Alternatives
 
