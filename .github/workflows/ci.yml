@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: syntax
+        run: |
+          node --check github-mcp-proxy.mjs
+          for f in github-mcp-proxy.sh tests/*.sh; do bash -n "$f"; done
+      - name: rule validation (offline)
+        run: tests/validate.sh

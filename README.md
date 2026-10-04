@@ -26,6 +26,7 @@ time, and is never written to disk or passed into the sandbox.
 | `github-mcp-proxy.rules.json` | call rules: `tools/call` requests matching a rule are answered locally, never forwarded |
 | `skills/github-mcp-proxy-rules/` | install skill: three rule profiles plus the schema drift check (see "Call filtering") |
 | `tests/` | `validate.sh` (offline rule validation) and `e2e.sh` (live profile walk) |
+| `.github/workflows/ci.yml` | CI: syntax checks + offline rule validation on every push/PR |
 
 ## Install
 
@@ -352,6 +353,11 @@ install, and you can read the whole thing in one sitting.
   (name tier, argument tier, malformed entries), restores the shipped
   rules. Needs the install in `~/.local/bin` and a reachable upstream;
   exit 0 = all green.
+
+CI (`.github/workflows/ci.yml`) runs the syntax checks and the offline
+test on every push and pull request. The e2e stays local on purpose: it
+needs a logged-in `gh` with GitHub MCP access on the host, and CI must
+not hold that credential.
 
 ## License
 
