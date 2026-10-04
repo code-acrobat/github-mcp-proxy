@@ -29,12 +29,21 @@ const token = () => execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).
 // rule from the wrong schema generation gets spotted instead of silently
 // never matching.
 let denyCalls = []
+const denyTools = new Set()
 try {
   const cfg = JSON.parse(readFileSync(join(import.meta.dirname, "github-mcp-proxy.rules.json"), "utf8"))
   const all = cfg.deny_calls ?? []
   denyCalls = all.filter((d) => typeof d?.tool === "string" && (d.if == null || typeof d.if === "object"))
-  if (denyCalls.length < all.length) console.error(`rules: dropped ${all.length - denyCalls.length} malformed entries`)
-  if (denyCalls.length) console.log(`rules: ${denyCalls.length} deny_calls active (schema ${cfg.schema ?? "unspecified"})`)
+  if (denyCalls.length < all.length) console.error(`rules: dropped ${all.length - denyCalls.length} malformed deny_calls entries`)
+  const toolList = cfg.deny_tools ?? []
+  for (const t of toolList) {
+    if (typeof t === "string") denyTools.add(t)
+    else console.error("rules: dropped malformed deny_tools entry")
+  }
+  if (denyCalls.length || denyTools.size)
+    console.log(
+      `rules: ${denyTools.size} deny_tools, ${denyCalls.length} deny_calls active (schema ${cfg.schema ?? "unspecified"})`,
+    )
 } catch (e) {
   if (e.code !== "ENOENT") console.error(`rules unusable (${e.message}); forwarding all calls`)
 }
@@ -42,9 +51,11 @@ try {
 // ponytail: exact match on the listed arg pairs only; add a `missing:` check when a rule needs absence
 const blockedReason = (body) => {
   if (body?.method !== "tools/call") return null
+  const name = body?.params?.name
+  if (denyTools.has(name)) return `denied ${name}`
   const args = body?.params?.arguments
   for (const r of denyCalls) {
-    if (r.tool !== body?.params?.name) continue
+    if (r.tool !== name) continue
     if (r.if && !Object.entries(r.if).every(([k, v]) => args?.[k] === v)) continue
     return r.reason || `denied ${r.tool}`
   }

@@ -24,6 +24,8 @@ time, and is never written to disk or passed into the sandbox.
 | `github-mcp-proxy.mjs` | the proxy: node, no dependencies, listens on `127.0.0.1:3719/mcp` |
 | `github-mcp-proxy.sh`  | control script: `up`, `down`, `status` |
 | `github-mcp-proxy.rules.json` | call rules: `tools/call` requests matching a rule are answered locally, never forwarded |
+| `skills/github-mcp-proxy-rules/` | install skill: three rule profiles plus the schema drift check (see "Call filtering") |
+| `tests/` | `validate.sh` (offline rule validation) and `e2e.sh` (live profile walk) |
 
 ## Install
 
@@ -42,6 +44,12 @@ github-mcp-proxy.sh down
 Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines and blocked calls,
 no per-request logging). It is started by hand on purpose: no systemd unit,
 and it dies on reboot or logout, so run `up` again after one.
+
+Optional, for the guided rules setup (profiles, schema drift check):
+
+```sh
+cp -r skills/github-mcp-proxy-rules ~/.agents/skills/
+```
 
 Quick check (any machine, host or sandbox):
 
@@ -223,6 +231,11 @@ stay a browser action: `event` can be `APPROVE`, `REQUEST_CHANGES`, or
 `COMMENT` (GitHub REST docs), and the tool schema comes from the tagged
 upstream release recorded in the rules file, not from probing this proxy.
 
+The name-level tier `deny_tools` blocks whole tools regardless of
+arguments (`"deny_tools": ["merge_pull_request", "push_files", ...]`)
+and is checked before `deny_calls`. That is the whole grammar:
+`schema`, `deny_tools`, `deny_calls`.
+
 Rules load at `up`: edit the file, then `down` + `up` to apply. A missing
 or broken rules file means no rules — everything forwards, so an
 unconfigured proxy behaves exactly as before. JSON-RPC batches and
@@ -233,22 +246,61 @@ calls land in the log.
 The rules file records which upstream schema generation the rules were
 written against (`github/github-mcp-server@v1.14.0`): tool names and
 arguments come from that tagged release of GitHub's MCP server source.
-Startup sanity-checks the rules file itself — malformed entries are
-dropped and logged instead of silently never matching. When the connected
-server moves to a newer generation, diff its `tools/list` against the tag
-before porting rules over.
+Startup sanity-checks the rules file itself - malformed entries are
+dropped and logged instead of silently never matching.
+
+### Keeping rules in sync
+
+Deny rules fail open when upstream drifts: a renamed tool or argument
+makes its rule silently stop matching, and calls start forwarding again.
+So the repo keeps a normalized `tools/list` snapshot per generation
+(`skills/github-mcp-proxy-rules/tools-list@v1.14.0.json` - names,
+argument types, enums, required lists; icons and descriptions stripped so
+the diff stays readable) and the install skill re-checks on every run:
+
+1. probe `tools/list` through the running proxy,
+2. diff against the snapshot and report new / changed / removed tools,
+3. validate every rule against that live schema (unknown tools, unknown
+   `if` arguments, values dropped from an enum) until it comes back clean,
+4. install the agreed rules, bump the `schema` field, refresh the
+   snapshot.
+
+Ground truth is the live probe, not the release feed: the hosted endpoint
+can move between releases. `gh api repos/github/github-mcp-server/
+releases/latest` is only an early warning; the last commit whose rules
+and snapshot matched a generation is tagged `schema-v1.14.0`.
+
+### Profiles
+
+`skills/github-mcp-proxy-rules/` ships three ready-made profiles (and
+installs as an agent skill via `cp -r` into `~/.agents/skills/`, where
+the skill walks through the check above):
+
+| profile | blocks |
+|---------|--------|
+| `hobby` | PR approvals |
+| `corporate-assisted` | approvals + direct push/commit/delete on `main`/`master` (PR flow stays the only road, even for tokens that could bypass branch protection) |
+| `corporate-agentic` | whole tools: merge, push, commit, delete, create repo - plus approvals; the safety net under broad permission pins |
 
 ## Production safeguards
 
 A hobby setup is one personal token and one human at the keyboard. For
 production repositories, keep a human approving each next step instead of
-building hard tool denials:
+building hard tool denials in the client:
 
 - **Ask is already the default.** opencode asks before a tool runs when no
   permission rule matches, so no `permissions` block is needed: every
   create, merge, or push call waits for you. Prefer staying on `ask` over
   `deny` rules as long as a human approves the next step; add a deny only
   for something nobody should ever run.
+- **The few hard denials live in the proxy, not in permission rules.**
+  opencode permissions match tool names, so they cannot express "approve
+  is human-only" or "push, but never to `main`". The proxy's rules file
+  can: it matches arguments, ships three profiles (see "Profiles" - the
+  assisted one closes the bypass hole for tokens that could write past a
+  ruleset), and the setup skill re-validates every rule against the live
+  `tools/list` so a renamed tool cannot silently disarm one. Ask stays
+  the default for everything the rules do not name.
 - **Keep merge rights on the forge, not in the client.** On GitHub: a
   ruleset on `main` requiring a pull request and at least one approving
   review (the PR author cannot approve their own PR), "Allow auto-merge"
@@ -288,6 +340,18 @@ The `omac-gh` skill from the skill marketplace does a similar job, but it
 needs marketplace access and lives inside a model session. This repo is the
 plain-file stand-in: same job (GitHub access for sandboxed sessions), no skill
 install, and you can read the whole thing in one sitting.
+
+## Tests
+
+- `tests/validate.sh` - offline. Rebuilds a `tools/list` response from the
+  committed snapshot and runs the skill's `validate.jq` over the shipped
+  rules and all three profiles (must come back valid), plus a broken rules
+  file (every failure class must be reported). No network, no proxy.
+- `tests/e2e.sh` - live. Installs the current files, walks all three
+  profiles through the running proxy asserting block/forward behavior
+  (name tier, argument tier, malformed entries), restores the shipped
+  rules. Needs the install in `~/.local/bin` and a reachable upstream;
+  exit 0 = all green.
 
 ## License
 

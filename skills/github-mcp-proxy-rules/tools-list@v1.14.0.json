@@ -1,0 +1,1411 @@
+[
+  {
+    "name": "add_comment_to_pending_review",
+    "props": {
+      "body": {
+        "type": "string"
+      },
+      "line": {
+        "type": "number"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "side": {
+        "enum": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "type": "string"
+      },
+      "startLine": {
+        "type": "number"
+      },
+      "startSide": {
+        "enum": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "type": "string"
+      },
+      "subjectType": {
+        "enum": [
+          "FILE",
+          "LINE"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "pullNumber",
+      "path",
+      "body",
+      "subjectType"
+    ]
+  },
+  {
+    "name": "add_issue_comment",
+    "props": {
+      "body": {
+        "type": "string"
+      },
+      "comment_id": {
+        "type": "integer"
+      },
+      "issue_number": {
+        "type": "number"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "reaction": {
+        "enum": [
+          "+1",
+          "-1",
+          "laugh",
+          "confused",
+          "heart",
+          "hooray",
+          "rocket",
+          "eyes"
+        ],
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "issue_number"
+    ]
+  },
+  {
+    "name": "add_reply_to_pull_request_comment",
+    "props": {
+      "body": {
+        "type": "string"
+      },
+      "commentId": {
+        "type": "number"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "reaction": {
+        "enum": [
+          "+1",
+          "-1",
+          "laugh",
+          "confused",
+          "heart",
+          "hooray",
+          "rocket",
+          "eyes"
+        ],
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "commentId"
+    ]
+  },
+  {
+    "name": "create_branch",
+    "props": {
+      "branch": {
+        "type": "string"
+      },
+      "from_branch": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "branch"
+    ]
+  },
+  {
+    "name": "create_or_update_file",
+    "props": {
+      "allow_symlink_write": {
+        "type": "boolean"
+      },
+      "branch": {
+        "type": "string"
+      },
+      "content": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sha": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "path",
+      "content",
+      "message",
+      "branch"
+    ]
+  },
+  {
+    "name": "create_pull_request",
+    "props": {
+      "base": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "draft": {
+        "type": "boolean"
+      },
+      "head": {
+        "type": "string"
+      },
+      "maintainer_can_modify": {
+        "type": "boolean"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "reviewers": {
+        "type": "array"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "title",
+      "head",
+      "base"
+    ]
+  },
+  {
+    "name": "create_repository",
+    "props": {
+      "autoInit": {
+        "type": "boolean"
+      },
+      "description": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "organization": {
+        "type": "string"
+      },
+      "private": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  },
+  {
+    "name": "delete_file",
+    "props": {
+      "branch": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "path",
+      "message",
+      "branch"
+    ]
+  },
+  {
+    "name": "fork_repository",
+    "props": {
+      "organization": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "get_commit",
+    "props": {
+      "detail": {
+        "enum": [
+          "none",
+          "stats",
+          "full_patch"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sha": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "sha"
+    ]
+  },
+  {
+    "name": "get_file_contents",
+    "props": {
+      "fields": {
+        "type": "array"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "ref": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sha": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "get_label",
+    "props": {
+      "name": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "name"
+    ]
+  },
+  {
+    "name": "get_latest_release",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "get_me",
+    "props": {},
+    "required": []
+  },
+  {
+    "name": "get_release_by_tag",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "tag": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "tag"
+    ]
+  },
+  {
+    "name": "get_tag",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "tag": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "tag"
+    ]
+  },
+  {
+    "name": "get_team_members",
+    "props": {
+      "org": {
+        "type": "string"
+      },
+      "team_slug": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "org",
+      "team_slug"
+    ]
+  },
+  {
+    "name": "get_teams",
+    "props": {
+      "user": {
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  {
+    "name": "issue_read",
+    "props": {
+      "issue_number": {
+        "type": "number"
+      },
+      "method": {
+        "enum": [
+          "get",
+          "get_comments",
+          "get_sub_issues",
+          "get_parent",
+          "get_labels"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "owner",
+      "repo",
+      "issue_number"
+    ]
+  },
+  {
+    "name": "issue_write",
+    "props": {
+      "assignees": {
+        "type": "array"
+      },
+      "body": {
+        "type": "string"
+      },
+      "duplicate_of": {
+        "type": "number"
+      },
+      "issue_fields": {
+        "type": "array"
+      },
+      "issue_number": {
+        "type": "number"
+      },
+      "labels": {
+        "type": "array"
+      },
+      "method": {
+        "enum": [
+          "create",
+          "update"
+        ],
+        "type": "string"
+      },
+      "milestone": {
+        "type": "number"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "parent_issue_number": {
+        "type": "number"
+      },
+      "parent_owner": {
+        "type": "string"
+      },
+      "parent_repo": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "open",
+          "closed"
+        ],
+        "type": "string"
+      },
+      "state_reason": {
+        "enum": [
+          "completed",
+          "not_planned",
+          "duplicate"
+        ],
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "type": {
+        "type": null
+      }
+    },
+    "required": [
+      "method",
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_branches",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_commits",
+    "props": {
+      "author": {
+        "type": "string"
+      },
+      "fields": {
+        "type": "array"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "path": {
+        "type": "string"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sha": {
+        "type": "string"
+      },
+      "since": {
+        "type": "string"
+      },
+      "until": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_issue_fields",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner"
+    ]
+  },
+  {
+    "name": "list_issue_types",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner"
+    ]
+  },
+  {
+    "name": "list_issues",
+    "props": {
+      "after": {
+        "type": "string"
+      },
+      "direction": {
+        "enum": [
+          "ASC",
+          "DESC"
+        ],
+        "type": "string"
+      },
+      "field_filters": {
+        "type": "array"
+      },
+      "fields": {
+        "type": "array"
+      },
+      "labels": {
+        "type": "array"
+      },
+      "orderBy": {
+        "enum": [
+          "CREATED_AT",
+          "UPDATED_AT",
+          "COMMENTS"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "since": {
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "OPEN",
+          "CLOSED"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_pull_requests",
+    "props": {
+      "base": {
+        "type": "string"
+      },
+      "direction": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "fields": {
+        "type": "array"
+      },
+      "head": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "created",
+          "updated",
+          "popularity",
+          "long-running"
+        ],
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "open",
+          "closed",
+          "all"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_releases",
+    "props": {
+      "fields": {
+        "type": "array"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_repository_collaborators",
+    "props": {
+      "affiliation": {
+        "enum": [
+          "outside",
+          "direct",
+          "all"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "list_tags",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "merge_pull_request",
+    "props": {
+      "commit_message": {
+        "type": "string"
+      },
+      "commit_title": {
+        "type": "string"
+      },
+      "expectedHeadSha": {
+        "type": "string"
+      },
+      "merge_method": {
+        "enum": [
+          "merge",
+          "squash",
+          "rebase"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  },
+  {
+    "name": "pull_request_read",
+    "props": {
+      "after": {
+        "type": "string"
+      },
+      "method": {
+        "enum": [
+          "get",
+          "get_diff",
+          "get_status",
+          "get_files",
+          "get_commits",
+          "get_review_comments",
+          "get_reviews",
+          "get_comments",
+          "get_check_runs"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  },
+  {
+    "name": "pull_request_review_write",
+    "props": {
+      "body": {
+        "type": "string"
+      },
+      "commitID": {
+        "type": "string"
+      },
+      "event": {
+        "enum": [
+          "APPROVE",
+          "REQUEST_CHANGES",
+          "COMMENT"
+        ],
+        "type": "string"
+      },
+      "method": {
+        "enum": [
+          "create",
+          "submit_pending",
+          "delete_pending",
+          "resolve_thread",
+          "unresolve_thread"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "threadId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  },
+  {
+    "name": "push_files",
+    "props": {
+      "branch": {
+        "type": "string"
+      },
+      "files": {
+        "type": "array"
+      },
+      "message": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "branch",
+      "files",
+      "message"
+    ]
+  },
+  {
+    "name": "request_copilot_review",
+    "props": {
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  },
+  {
+    "name": "run_secret_scanning",
+    "props": {
+      "files": {
+        "type": null
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "files",
+      "owner",
+      "repo"
+    ]
+  },
+  {
+    "name": "search_code",
+    "props": {
+      "fields": {
+        "type": "array"
+      },
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "sort": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_commits",
+    "props": {
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "author-date",
+          "committer-date"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_issues",
+    "props": {
+      "fields": {
+        "type": "array"
+      },
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "comments",
+          "reactions",
+          "reactions-+1",
+          "reactions--1",
+          "reactions-smile",
+          "reactions-thinking_face",
+          "reactions-heart",
+          "reactions-tada",
+          "interactions",
+          "created",
+          "updated"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_pull_requests",
+    "props": {
+      "fields": {
+        "type": "array"
+      },
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "comments",
+          "reactions",
+          "reactions-+1",
+          "reactions--1",
+          "reactions-smile",
+          "reactions-thinking_face",
+          "reactions-heart",
+          "reactions-tada",
+          "interactions",
+          "created",
+          "updated"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_repositories",
+    "props": {
+      "minimal_output": {
+        "type": "boolean"
+      },
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "stars",
+          "forks",
+          "help-wanted-issues",
+          "updated"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_users",
+    "props": {
+      "order": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
+      "page": {
+        "type": "number"
+      },
+      "perPage": {
+        "type": "number"
+      },
+      "query": {
+        "type": "string"
+      },
+      "sort": {
+        "enum": [
+          "followers",
+          "repositories",
+          "joined"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "sub_issue_write",
+    "props": {
+      "after_id": {
+        "type": "number"
+      },
+      "before_id": {
+        "type": "number"
+      },
+      "issue_number": {
+        "type": "number"
+      },
+      "method": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "replace_parent": {
+        "type": "boolean"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "sub_issue_id": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "method",
+      "owner",
+      "repo",
+      "issue_number",
+      "sub_issue_id"
+    ]
+  },
+  {
+    "name": "ui_get",
+    "props": {
+      "method": {
+        "enum": [
+          "labels",
+          "assignees",
+          "milestones",
+          "issue_types",
+          "branches",
+          "issue_fields",
+          "reviewers"
+        ],
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "owner"
+    ]
+  },
+  {
+    "name": "update_issue_comment",
+    "props": {
+      "body": {
+        "type": "string"
+      },
+      "comment_id": {
+        "type": "integer"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "comment_id",
+      "body"
+    ]
+  },
+  {
+    "name": "update_pull_request",
+    "props": {
+      "base": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "draft": {
+        "type": "boolean"
+      },
+      "maintainer_can_modify": {
+        "type": "boolean"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "reviewers": {
+        "type": "array"
+      },
+      "state": {
+        "enum": [
+          "open",
+          "closed"
+        ],
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  },
+  {
+    "name": "update_pull_request_branch",
+    "props": {
+      "expectedHeadSha": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "pullNumber": {
+        "type": "number"
+      },
+      "repo": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "pullNumber"
+    ]
+  }
+]

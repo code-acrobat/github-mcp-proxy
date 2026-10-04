@@ -1,0 +1,40 @@
+{
+  "schema": "github/github-mcp-server@v1.14.0",
+  "deny_calls": [
+    {
+      "tool": "pull_request_review_write",
+      "if": { "event": "APPROVE" },
+      "reason": "PR approvals are human-only"
+    },
+    {
+      "tool": "push_files",
+      "if": { "branch": "main" },
+      "reason": "direct pushes to main are human-only"
+    },
+    {
+      "tool": "push_files",
+      "if": { "branch": "master" },
+      "reason": "direct pushes to master are human-only"
+    },
+    {
+      "tool": "create_or_update_file",
+      "if": { "branch": "main" },
+      "reason": "direct commits to main are human-only"
+    },
+    {
+      "tool": "create_or_update_file",
+      "if": { "branch": "master" },
+      "reason": "direct commits to master are human-only"
+    },
+    {
+      "tool": "delete_file",
+      "if": { "branch": "main" },
+      "reason": "deletes from main are human-only"
+    },
+    {
+      "tool": "delete_file",
+      "if": { "branch": "master" },
+      "reason": "deletes from master are human-only"
+    }
+  ]
+}
