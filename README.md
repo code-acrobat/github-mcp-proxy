@@ -359,6 +359,9 @@ test on every push and pull request. The e2e stays local on purpose: it
 needs a logged-in `gh` with GitHub MCP access on the host, and CI must
 not hold that credential.
 
+Development notes (architecture invariants, generation bumps,
+contribution rules) live in [AGENTS.md](./AGENTS.md).
+
 ## License
 
 [MIT](./LICENSE) — free to use, copy, modify, merge, publish, distribute;
