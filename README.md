@@ -277,6 +277,11 @@ and snapshot matched a generation is tagged `schema-v1.14.0`.
 installs as an agent skill via `cp -r` into `~/.agents/skills/`, where
 the skill walks through the check above):
 
+```sh
+cp skills/github-mcp-proxy-rules/profiles/hobby.json ~/.local/bin/github-mcp-proxy.rules.json
+github-mcp-proxy.sh down && github-mcp-proxy.sh up   # rules load at up
+```
+
 | profile | blocks |
 |---------|--------|
 | `hobby` | PR approvals |
