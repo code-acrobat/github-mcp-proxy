@@ -75,6 +75,18 @@ Note: `opencode mcp list` inside a cold session can print "No MCP servers
 configured" even when the config is loaded (known v2 quirk). To see what the
 session really loaded, run `opencode debug config`.
 
+Enable it per project, not everywhere: not every project is a GitHub project,
+and a disabled entry costs nothing. If the `opencode.json` travels with the
+repo, leave `github` out of projects that don't need it (or commit it with
+`"enabled": false` as the default) so collaborators without a running proxy
+aren't handed a dead `127.0.0.1` entry.
+
+Other forges: GitLab and Bitbucket/Atlassian offer their own MCP servers,
+hosted or self-hosted. Where yours needs a token your client cannot hold
+cleanly, the same pattern works: a small host-side proxy on loopback that
+injects the token, plus the matching port grant in omac. Only the upstream URL
+and the token command change.
+
 ## Making it reachable in omac (port forwarding)
 
 The sandbox is network-filtered. The one grant it needs is the loopback port,
