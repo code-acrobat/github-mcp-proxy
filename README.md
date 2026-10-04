@@ -184,6 +184,14 @@ Assume the following:
   killing the proxy is the global kill switch.) Expect connection-error noise
   in sessions that keep the tool list around.
 
+- **The cut is host-side; a nested sandboxed session cannot undo it.** Inside
+  an omac sandbox there is no token material at all (no keyring, no
+  `~/.config/gh`, no `GH_TOKEN`), so a nested session cannot stand up a
+  working proxy of its own: it can read the script and run `node`, but `gh
+  auth token` finds nothing and the upstream answers 401. The kill switch
+  bounds sessions inside the sandbox; anything running outside a sandbox with
+  your privileges can run `up` again (or call `gh` directly), as always.
+
 In short: every MCP client you point at this port holds your GitHub identity
 while it is connected. Keep that set small and trusted, and keep the
 connection window short.
