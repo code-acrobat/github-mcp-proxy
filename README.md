@@ -235,6 +235,11 @@ building hard tool denials:
   "ask" }` and `{ "action": "shell", "resource": "gh api *actions*",
   "effect": "ask" }` (dispatches, reruns, cancels).
 
+This is a baseline, not a final, thought-through process. It reflects one
+setup and one set of assumptions; every enterprise has its own rules, and
+each tool and permission your organization grants needs a thorough
+inspection of its own before you rely on advice like this.
+
 ## Alternatives
 
 The `omac-gh` skill from the skill marketplace does a similar job, but it
