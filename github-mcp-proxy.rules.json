@@ -1,0 +1,10 @@
+{
+  "schema": "github/github-mcp-server@v1.14.0",
+  "deny_calls": [
+    {
+      "tool": "pull_request_review_write",
+      "if": { "event": "APPROVE" },
+      "reason": "PR approvals are human-only"
+    }
+  ]
+}

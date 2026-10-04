@@ -23,6 +23,7 @@ time, and is never written to disk or passed into the sandbox.
 |------|------------|
 | `github-mcp-proxy.mjs` | the proxy: node, no dependencies, listens on `127.0.0.1:3719/mcp` |
 | `github-mcp-proxy.sh`  | control script: `up`, `down`, `status` |
+| `github-mcp-proxy.rules.json` | call rules: `tools/call` requests matching a rule are answered locally, never forwarded |
 
 ## Install
 
@@ -30,7 +31,7 @@ Prerequisites: `node`, and `gh` logged in (`gh auth status` must succeed on
 the host).
 
 ```sh
-cp github-mcp-proxy.mjs github-mcp-proxy.sh ~/.local/bin/
+cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json ~/.local/bin/
 chmod +x ~/.local/bin/github-mcp-proxy.mjs ~/.local/bin/github-mcp-proxy.sh
 
 github-mcp-proxy.sh up        # starts it in the background (nohup)
@@ -38,9 +39,9 @@ github-mcp-proxy.sh status    # prints pid + probes the port (exit 1 = down)
 github-mcp-proxy.sh down
 ```
 
-Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines only, no per-request
-logging). It is started by hand on purpose: no systemd unit, and it dies on
-reboot or logout, so run `up` again after one.
+Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines and blocked calls,
+no per-request logging). It is started by hand on purpose: no systemd unit,
+and it dies on reboot or logout, so run `up` again after one.
 
 Quick check (any machine, host or sandbox):
 
@@ -195,6 +196,47 @@ Assume the following:
 In short: every MCP client you point at this port holds your GitHub identity
 while it is connected. Keep that set small and trusted, and keep the
 connection window short.
+
+## Call filtering
+
+opencode permissions match tool *names*, not arguments, so a dangerous
+option has no seat there. The proxy checks every `tools/call` request
+against `github-mcp-proxy.rules.json` (next to the script) and, on a
+match, answers locally with a JSON-RPC error — the call never reaches
+GitHub:
+
+```json
+{
+  "deny_calls": [
+    {
+      "tool": "pull_request_review_write",
+      "if": { "event": "APPROVE" },
+      "reason": "PR approvals are human-only"
+    }
+  ]
+}
+```
+
+A rule matches when `tool` is the exact tool name and every pair in `if`
+equals the call's arguments. The shipped rule blocks PR approvals, which
+stay a browser action: `event` can be `APPROVE`, `REQUEST_CHANGES`, or
+`COMMENT` (GitHub REST docs), and the tool schema comes from the tagged
+upstream release recorded in the rules file, not from probing this proxy.
+
+Rules load at `up`: edit the file, then `down` + `up` to apply. A missing
+or broken rules file means no rules — everything forwards, so an
+unconfigured proxy behaves exactly as before. JSON-RPC batches and
+unparseable bodies also pass through. Only the MCP path is guarded; shell
+`gh` bypasses it, same threat model as the rest of this proxy. Blocked
+calls land in the log.
+
+The rules file records which upstream schema generation the rules were
+written against (`github/github-mcp-server@v1.14.0`): tool names and
+arguments come from that tagged release of GitHub's MCP server source.
+Startup sanity-checks the rules file itself — malformed entries are
+dropped and logged instead of silently never matching. When the connected
+server moves to a newer generation, diff its `tools/list` against the tag
+before porting rules over.
 
 ## Production safeguards
 
