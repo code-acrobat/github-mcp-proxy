@@ -21,6 +21,12 @@ const HOP = new Set([
 const token = () => execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim()
 
 http.createServer((req, res) => {
+  // Browsers are not clients here: block requests carrying fetch metadata.
+  if (req.headers.origin || req.headers["sec-fetch-site"]) {
+    res.writeHead(403, { "content-type": "text/plain" })
+    res.end("browser requests are not allowed")
+    return
+  }
   const headers = {}
   for (const [k, v] of Object.entries(req.headers)) {
     const key = k.toLowerCase()

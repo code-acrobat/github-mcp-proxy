@@ -149,8 +149,9 @@ Assume the following:
 - **The port is open to everything on this machine.** There is no
   authentication on `127.0.0.1:3719`: any process running as you can use the
   proxy as an authenticated GitHub client, with everything your `gh` login is
-  allowed to do. Web pages are mostly blocked by CORS, but that is a browser
-  convention, not an access control.
+  allowed to do. Requests carrying a browser `Origin` or `Sec-Fetch-Site`
+  header are rejected with 403, so web pages cannot drive the proxy; that is
+  header sniffing, not real authentication.
 - **Single-user machine assumption.** Do not run this on a shared or
   multi-user host.
 - **The proxy runs with your privileges and calls `gh` from `PATH`.** Only

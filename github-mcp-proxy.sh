@@ -5,7 +5,8 @@ SELF=github-mcp-proxy.mjs
 PORT=3719
 LOG=/tmp/opencode/github-mcp-proxy.log
 
-pid() { pgrep -f "[g]ithub-mcp-proxy\.mjs"; }
+# match the node process only, never a shell/editor whose cmdline merely mentions the file
+pid() { pgrep -f "[n]ode.*github-mcp-proxy\.mjs"; }
 
 case "${1:-}" in
   up)
