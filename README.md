@@ -176,8 +176,17 @@ Assume the following:
 - Run it on the host, outside any sandbox: inside a sandbox there is no keyring
   access, and the design stops making sense.
 
+- **The connection can be cut at any time.** During long unattended agent
+  sessions, run `github-mcp-proxy.sh down`: GitHub tools fail with connection
+  refused instead of being a channel a prompt injection can drive, for every
+  session at once and immediately. Bring it back with `up` when you are done.
+  (Toggling `"enabled"` in the config gives the same reduction per session;
+  killing the proxy is the global kill switch.) Expect connection-error noise
+  in sessions that keep the tool list around.
+
 In short: every MCP client you point at this port holds your GitHub identity
-while it is connected. Keep that set small and trusted.
+while it is connected. Keep that set small and trusted, and keep the
+connection window short.
 
 ## Alternatives
 
