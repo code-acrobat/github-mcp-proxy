@@ -122,6 +122,50 @@ Three independent walls, so the proxy is the only road to GitHub:
 So the session reaches `127.0.0.1:3719` only, and the token is injected on
 the host side, per request, where `gh` and the keyring live.
 
+## Scope and maturity
+
+Deliberately minimal. Treat it as a tool you read and run, not a product:
+
+- **No version pinning.** It runs whatever `node` and `gh` are on your `PATH`
+  and talks to whatever GitHub serves today.
+- **No update checks, no releases.** `git pull` is the upgrade path; there are
+  no tags, no changelog, no npm package (installation is copying two files).
+- **No CI/CD toolchain.** Nothing automated runs on this repo: no tests, no
+  linters, no release pipeline. What you push is what you ran locally.
+- **No auto-restart.** One plain background process, no systemd unit; it dies
+  on reboot or logout (see Install).
+
+## Security notes
+
+Safe by design:
+
+- The token is read from your host keyring per request (`gh auth token`),
+  never written to disk, never placed in config, environment, or the sandbox.
+- The listener binds loopback only, and client-supplied `Authorization`
+  headers are stripped before forwarding.
+
+Assume the following:
+
+- **The port is open to everything on this machine.** There is no
+  authentication on `127.0.0.1:3719`: any process running as you can use the
+  proxy as an authenticated GitHub client, with everything your `gh` login is
+  allowed to do. Web pages are mostly blocked by CORS, but that is a browser
+  convention, not an access control.
+- **Single-user machine assumption.** Do not run this on a shared or
+  multi-user host.
+- **The proxy runs with your privileges and calls `gh` from `PATH`.** Only
+  start it from a shell you trust.
+- Requests are forwarded with no rate or size limit, so a local process can
+  spend your GitHub API quota.
+- Failure replies can contain the `gh` error text; the log
+  (`/tmp/opencode/github-mcp-proxy.log`, startup lines only) sits in a
+  world-searchable directory.
+- Run it on the host, outside any sandbox: inside a sandbox there is no keyring
+  access, and the design stops making sense.
+
+In short: every MCP client you point at this port holds your GitHub identity
+while it is connected. Keep that set small and trusted.
+
 ## Alternatives
 
 The `omac-gh` skill from the skill marketplace does a similar job, but it
