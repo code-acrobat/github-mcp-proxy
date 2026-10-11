@@ -26,8 +26,26 @@ link across instead of copying text.
   unbuffered. Blocked calls get a local `200` JSON-RPC error
   (`code: -32000`) and one log line, and never reach upstream (the
   blocked path skips the token lookup).
-- **JSON-RPC batches and unparseable bodies pass through untouched** -
-  deliberate; never "fix" this by buffering or rewriting them.
+- **Batches and unparseable bodies fail closed.** A batch containing any
+  `tools/call` is ruled on call by call; one denied call blocks the whole
+  batch (local `-32000`, `id: null`). A non-empty body that does not
+  parse as JSON is refused the same way; an empty body (the SSE `GET`)
+  forwards untouched. The old pass-through let a denied call ride in
+  hidden inside an array; the three proxy siblings keep this request
+  handling in lockstep.
+- **Startup schema lock is an identity check only.** On start the proxy
+  `initialize`s the endpoint and requires it to answer as
+  `github-mcp-server` with a `serverInfo.version` present. It does NOT
+  compare that version against the `schema` tag: the hosted endpoint
+  reports a commit hash (`github-mcp-server/remote-<sha>`), and newer
+  hashes are expected to pass - the latest release tag is sufficient,
+  deploy-hash churn does not break the interface. A successful
+  `initialize` that answers with a different name or no version locks
+  every `tools/call` (local `-32000`) until restart; `initialize` and
+  `tools/list` keep passing so the new schema can still be captured. An
+  unreachable endpoint does not lock (the per-request 502 surfaces it).
+  Re-evaluating tool schemas against a new release tag stays the offline
+  process in "Working on rules" below - not a runtime comparison.
 - **Rules load once at startup.** Edit the rules file, then `down` +
   `up`. No reload endpoint, no per-request file reads.
 - **Deny rules fail open** (missing file = forward all; malformed entries
