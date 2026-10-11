@@ -9,8 +9,8 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const PORT = 3719
-const TARGET = new URL("https://api.githubcopilot.com/mcp/")
+const PORT = Number(process.env.PORT || 3719)
+const TARGET = new URL(process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/")
 const HOP = new Set([
   "connection",
   "keep-alive",
@@ -62,6 +62,48 @@ const blockedReason = (body) => {
   return null
 }
 
+// Schema lock - identity check only. The hosted endpoint reports its own
+// version on initialize (a commit hash, e.g. github-mcp-server/remote-<sha>).
+// Newer commit hashes are expected and must NOT lock: the latest release tag
+// is sufficient, deploy-hash churn does not break the interface. Re-evaluating
+// tool schemas against a new tag stays the skill's offline drift check (see
+// AGENTS.md "Working on rules"). This lock only fires when a successful
+// initialize answers with a different server name or no version at all -
+// i.e. the endpoint stopped being the GitHub MCP server. An unreachable
+// initialize does not lock (the per-request 502 surfaces that instead).
+let lockReason = null
+try {
+  let tok = null
+  try { tok = token() } catch {}
+  if (tok) {
+    const r = await fetch(TARGET.href, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${tok}`,
+        "user-agent": "github-mcp-proxy",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "github-mcp-proxy", version: "0" } },
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const text = await r.text()
+    const line = text.split("\n").find((l) => l.startsWith("data: "))
+    const info = JSON.parse(line ? line.slice(6) : text)?.result?.serverInfo
+    if (!info?.version) {
+      lockReason = "upstream did not report serverInfo.version on initialize"
+    } else if (info.name && info.name !== "github-mcp-server") {
+      lockReason = `upstream identifies as ${info.name}, expected github-mcp-server`
+    } else {
+      console.log(`schema ok: upstream identifies as ${info.name ?? "github-mcp-server"} ${info.version} (identity lock; tag re-eval is the skill's drift check)`)
+    }
+  }
+} catch {}
+if (lockReason) console.log(`schema LOCKED: ${lockReason}; tools/call denied until the endpoint is back or you restart`)
+
 http.createServer((req, res) => {
   // Browsers are not clients here: block requests carrying fetch metadata.
   if (req.headers.origin || req.headers["sec-fetch-site"]) {
@@ -101,6 +143,7 @@ http.createServer((req, res) => {
       } else {
         reason = blockedReason(body)
         id = body?.id ?? null
+        if (!reason && lockReason && body?.method === "tools/call") reason = lockReason
       }
     }
     if (reason) {
