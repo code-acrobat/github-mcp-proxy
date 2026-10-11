@@ -239,8 +239,10 @@ and is checked before `deny_calls`. That is the whole grammar:
 
 Rules load at `up`: edit the file, then `down` + `up` to apply. A missing
 or broken rules file means no rules — everything forwards, so an
-unconfigured proxy behaves exactly as before. JSON-RPC batches and
-unparseable bodies also pass through. Only the MCP path is guarded; shell
+unconfigured proxy behaves exactly as before. Request bodies fail closed:
+a JSON-RPC batch containing any `tools/call` is checked call by call and
+a denied call blocks the whole batch, and a non-empty body that does not
+parse as JSON is refused. Only the MCP path is guarded; shell
 `gh` bypasses it, same threat model as the rest of this proxy. Blocked
 calls land in the log.
 
@@ -366,6 +368,16 @@ not hold that credential.
 
 Development notes (architecture invariants, generation bumps,
 contribution rules) live in [AGENTS.md](./AGENTS.md).
+
+## Related projects
+
+- [kubernetes-mcp-proxy](https://github.com/code-acrobat/kubernetes-mcp-proxy):
+  the same loopback-policy idea for the Kubernetes MCP server, with a
+  harder guarantee set (namespace scoping, response filtering, startup
+  schema lock) and a thorough published adversarial test (its
+  `ADVERSARIAL-TESTS.md`). This proxy and its GitLab sibling were set up
+  on the same principles; an equivalent adversarial pass for both is
+  planned.
 
 ## License
 

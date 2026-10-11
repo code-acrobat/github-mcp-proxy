@@ -26,8 +26,13 @@ link across instead of copying text.
   unbuffered. Blocked calls get a local `200` JSON-RPC error
   (`code: -32000`) and one log line, and never reach upstream (the
   blocked path skips the token lookup).
-- **JSON-RPC batches and unparseable bodies pass through untouched** -
-  deliberate; never "fix" this by buffering or rewriting them.
+- **Batches and unparseable bodies fail closed.** A batch containing any
+  `tools/call` is ruled on call by call; one denied call blocks the whole
+  batch (local `-32000`, `id: null`). A non-empty body that does not
+  parse as JSON is refused the same way; an empty body (the SSE `GET`)
+  forwards untouched. The old pass-through let a denied call ride in
+  hidden inside an array; the three proxy siblings keep this request
+  handling in lockstep.
 - **Rules load once at startup.** Edit the rules file, then `down` +
   `up`. No reload endpoint, no per-request file reads.
 - **Deny rules fail open** (missing file = forward all; malformed entries

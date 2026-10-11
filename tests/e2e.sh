@@ -56,6 +56,11 @@ restart
 check "hobby approve" "$APPROVE" blocked
 check "hobby comment" "$COMMENT" forward
 check "hobby merge" "$MERGE" forward
+BATCHPING='[{"jsonrpc":"2.0","id":1,"method":"ping"}]'
+BATCHAPPROVE='[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pull_request_review_write","arguments":{"method":"create","owner":"o","repo":"r","pullNumber":1,"event":"APPROVE","body":"lgtm"}}}]'
+check "hobby batch ping forwards" "$BATCHPING" forward
+check "hobby batch hiding approve blocked" "$BATCHAPPROVE" blocked
+check "hobby unparseable body refused" '{not json' blocked
 
 echo "== corporate-agentic =="
 cp "$S/profiles/corporate-agentic.json" "$BIN/github-mcp-proxy.rules.json"
