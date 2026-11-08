@@ -15,11 +15,21 @@ FAIL=0
 restart() {
   "$BIN/github-mcp-proxy.sh" down >/dev/null 2>&1
   "$BIN/github-mcp-proxy.sh" up >/dev/null
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    "$BIN/github-mcp-proxy.sh" status >/dev/null 2>&1 && break
-    sleep 0.3
-  done
+  wait_up
   grep 'rules:' "$LOG" | tail -1
+}
+
+# `up` returns once the pid exists, but the proxy only listens after its
+# startup schema-lock probe upstream, so poll until the port accepts.
+wait_up() {
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if (exec 3<>/dev/tcp/127.0.0.1/3719) 2>/dev/null; then return 0; fi
+    sleep 0.5
+  done
+  echo "FAIL proxy did not start listening on 3719"
+  FAIL=1
+  return 1
 }
 
 probe() { curl -s -X POST "$P" -H 'content-type: application/json' -d "$1"; }
@@ -88,5 +98,27 @@ cp github-mcp-proxy.rules.json "$BIN/"
 restart
 check "restore approve" "$APPROVE" blocked
 check "restore merge" "$MERGE" forward
+
+echo "== GITHUB_MCP_TOOLSETS opt-in =="
+GITHUB_MCP_TOOLSETS=default,actions "$BIN/github-mcp-proxy.sh" down >/dev/null 2>&1
+GITHUB_MCP_TOOLSETS=default,actions "$BIN/github-mcp-proxy.sh" up >/dev/null
+wait_up
+grep 'toolsets:' "$LOG" | tail -1
+H=$(mktemp)
+curl -s -D "$H" -o /dev/null -X POST "$P" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}'
+SID=$(grep -i '^mcp-session-id:' "$H" | tr -d '\r' | awk '{print $2}'); rm -f "$H"
+curl -s -o /dev/null -X POST "$P" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+if curl -s -X POST "$P" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | grep -q actions_list; then
+  echo "PASS toolsets opt-in -> actions_list exposed"
+else
+  echo "FAIL toolsets opt-in -> actions_list missing"; FAIL=1
+fi
+restart
 
 exit $FAIL
