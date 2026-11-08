@@ -78,7 +78,11 @@ diff <path-to-this-dir>/tools-list@v1.14.0.json /tmp/ghmcp-live.norm
 ```
 
 Report new / changed / removed tools to the user and agree any rule
-changes **before** installing.
+changes **before** installing. With the `GITHUB_MCP_TOOLSETS` opt-in
+(README, Install) the live list also carries that toolset's extras (the
+four Actions tools: `actions_*` plus `get_job_logs`); those additions
+are expected and rules can ignore them - only movements among tools the
+rules can name matter.
 
 **Validate the chosen rules against the live schema** - unknown tools,
 unknown `if` arguments, and values that fell out of an enum are reported

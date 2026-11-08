@@ -11,6 +11,9 @@ import { join } from "node:path"
 
 const PORT = Number(process.env.PORT || 3719)
 const TARGET = new URL(process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/")
+// Opt-in upstream toolsets (e.g. "default,actions"): injected as x-mcp-toolsets
+// unless the client set its own header. Empty = upstream default toolsets.
+const TOOLSETS = (process.env.GITHUB_MCP_TOOLSETS || "").trim()
 const HOP = new Set([
   "connection",
   "keep-alive",
@@ -164,6 +167,7 @@ http.createServer((req, res) => {
       if (key === "host" || key === "authorization" || HOP.has(key)) continue
       headers[k] = v
     }
+    if (TOOLSETS && !headers["x-mcp-toolsets"]) headers["x-mcp-toolsets"] = TOOLSETS
     try {
       headers.authorization = `Bearer ${token()}`
     } catch (e) {
@@ -197,5 +201,8 @@ http.createServer((req, res) => {
     up.end(raw)
   })
 }).listen(PORT, "127.0.0.1", () => {
-  console.log(`github mcp proxy on 127.0.0.1:${PORT} -> ${TARGET.href}`)
+  console.log(
+    `github mcp proxy on 127.0.0.1:${PORT} -> ${TARGET.href}` +
+      (TOOLSETS ? ` (toolsets: ${TOOLSETS})` : ""),
+  )
 })

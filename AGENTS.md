@@ -22,8 +22,10 @@ link across instead of copying text.
 - **Request flow:** buffer body -> browser guard (`Origin` or
   `Sec-Fetch-Site` present -> 403 text/plain) -> JSON parse -> policy
   check -> inject `Authorization: Bearer $(gh auth token)` -> forward raw
-  bytes. Content-length stays intact; SSE responses stream through
-  unbuffered. Blocked calls get a local `200` JSON-RPC error
+  bytes. A set `GITHUB_MCP_TOOLSETS` also injects `x-mcp-toolsets`
+  (unless the client sent its own). Content-length stays intact; SSE
+  responses stream through unbuffered. Blocked calls get a local `200`
+  JSON-RPC error
   (`code: -32000`) and one log line, and never reach upstream (the
   blocked path skips the token lookup).
 - **Batches and unparseable bodies fail closed.** A batch containing any

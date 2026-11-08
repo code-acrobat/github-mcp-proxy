@@ -22,7 +22,7 @@ time, and is never written to disk or passed into the sandbox.
 | file | what it is |
 |------|------------|
 | `github-mcp-proxy.mjs` | the proxy: node, no dependencies, listens on `127.0.0.1:3719/mcp` |
-| `github-mcp-proxy.sh`  | control script: `up`, `down`, `status` |
+| `github-mcp-proxy.sh`  | control script: `up`, `down`, `status`; sources `~/.config/github-mcp-proxy/env` if present |
 | `github-mcp-proxy.rules.json` | call rules: `tools/call` requests matching a rule are answered locally, never forwarded |
 | `skills/github-mcp-proxy-rules/` | install skill: three rule profiles plus the schema drift check (see "Call filtering") |
 | `tests/` | `validate.sh` (offline rule validation) and `e2e.sh` (live profile walk) |
@@ -41,6 +41,22 @@ github-mcp-proxy.sh up        # starts it in the background (nohup)
 github-mcp-proxy.sh status    # prints pid + probes the port (exit 1 = down)
 github-mcp-proxy.sh down
 ```
+
+Opt-in: extra upstream toolsets for every client of this proxy (the
+default set has no Actions tools):
+
+```sh
+mkdir -p ~/.config/github-mcp-proxy
+echo 'GITHUB_MCP_TOOLSETS=default,actions' > ~/.config/github-mcp-proxy/env
+github-mcp-proxy.sh down && github-mcp-proxy.sh up   # env is read at up
+```
+
+`GITHUB_MCP_TOOLSETS` is a comma list forwarded upstream as the
+`x-mcp-toolsets` header; `default` keeps the standard set, and the
+remaining names come from the upstream server (`actions`, `git`, `orgs`,
+`governance`, `code_security`, ...; `all` enables everything). A client
+that sets its own `x-mcp-toolsets` header wins over the env var. Without
+the opt-in the proxy forwards upstream's default toolsets, as before.
 
 Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines and blocked calls,
 no per-request logging). It is started by hand on purpose: no systemd unit,
@@ -332,8 +348,11 @@ building hard tool denials in the client:
   rule cannot wave them through.
 - **Ask before triggering pipelines.** A manual gate exists so a human
   decides when a run proceeds; an agent pressing its own gate defeats the
-  point. The GitHub MCP has no workflow-trigger tool, but the shell does:
-  pin `{ "action": "shell", "resource": "gh workflow run *", "effect":
+  point. The default toolset has no workflow-trigger tool, but the Actions
+  opt-in (`GITHUB_MCP_TOOLSETS`, see Install) adds `actions_run_trigger`,
+  which runs, reruns, and cancels workflows - opencode's default `ask`
+  already covers it - and the shell always has one: pin
+  `{ "action": "shell", "resource": "gh workflow run *", "effect":
   "ask" }` and `{ "action": "shell", "resource": "gh api *actions*",
   "effect": "ask" }` (dispatches, reruns, cancels).
 
