@@ -107,7 +107,7 @@ prints `rules valid against live schema`.
 ```sh
 cp <chosen-profile>.json ~/.local/bin/github-mcp-proxy.rules.json   # profiles/ next to this file
 github-mcp-proxy.sh down && github-mcp-proxy.sh up
-grep rules: /tmp/opencode/github-mcp-proxy.log | tail -1
+grep rules: ~/.local/state/github-mcp-proxy/github-mcp-proxy.log | tail -1
 # expect: rules: N deny_tools, M deny_calls active (schema github/github-mcp-server@...)
 ```
 

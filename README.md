@@ -98,7 +98,7 @@ lifted by a client; unlike readonly, `tools/list` stays unchanged (the
 proxy never filters responses) - out-of-scope tools simply refuse when
 called. Hobby baseline: `GITHUB_MCP_SCOPE=<your-login>`.
 
-Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines and blocked calls,
+Log: `~/.local/state/github-mcp-proxy/github-mcp-proxy.log` (startup lines and blocked calls,
 no per-request logging). It is started by hand on purpose: no systemd unit,
 and it dies on reboot or logout, so run `up` again after one.
 
@@ -237,8 +237,8 @@ Assume the following:
 - Requests are forwarded with no rate or size limit, so a local process can
   spend your GitHub API quota.
 - Failure replies can contain the `gh` error text; the log
-  (`/tmp/opencode/github-mcp-proxy.log`, startup lines only) sits in a
-  world-searchable directory.
+  (`~/.local/state/github-mcp-proxy/github-mcp-proxy.log`, startup lines
+  only) sits under your home directory, whose permissions decide who reads it.
 - Run it on the host, outside any sandbox: inside a sandbox there is no keyring
   access, and the design stops making sense.
 

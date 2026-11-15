@@ -3,7 +3,7 @@
 set -u
 SELF=github-mcp-proxy.mjs
 PORT=3719
-LOG=/tmp/opencode/github-mcp-proxy.log
+LOG=${XDG_STATE_HOME:-$HOME/.local/state}/github-mcp-proxy/github-mcp-proxy.log
 
 # optional install-level env (GITHUB_MCP_TOOLSETS, GITHUB_MCP_READONLY,
 # GITHUB_MCP_SCOPE, PORT, GITHUB_MCP_URL);

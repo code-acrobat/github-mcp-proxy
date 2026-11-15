@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 BIN="$HOME/.local/bin"
 S=skills/github-mcp-proxy-rules
 P=http://127.0.0.1:3719/mcp
-LOG=${GITHUB_MCP_PROXY_LOG:-/tmp/opencode/github-mcp-proxy.log}
+LOG=${GITHUB_MCP_PROXY_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/github-mcp-proxy/github-mcp-proxy.log}
 FAIL=0
 
 restart() {
