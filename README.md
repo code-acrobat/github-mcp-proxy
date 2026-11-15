@@ -43,20 +43,60 @@ github-mcp-proxy.sh down
 ```
 
 Opt-in: extra upstream toolsets for every client of this proxy (the
-default set has no Actions tools):
+default set has no Actions tools), and a host-enforced read-only mode:
 
 ```sh
 mkdir -p ~/.config/github-mcp-proxy
-echo 'GITHUB_MCP_TOOLSETS=default,actions' > ~/.config/github-mcp-proxy/env
+cat > ~/.config/github-mcp-proxy/env <<'EOF'
+GITHUB_MCP_TOOLSETS=default,actions
+GITHUB_MCP_READONLY=1
+EOF
 github-mcp-proxy.sh down && github-mcp-proxy.sh up   # env is read at up
 ```
 
 `GITHUB_MCP_TOOLSETS` is a comma list forwarded upstream as the
 `x-mcp-toolsets` header; `default` keeps the standard set, and the
 remaining names come from the upstream server (`actions`, `git`, `orgs`,
-`governance`, `code_security`, ...; `all` enables everything). A client
-that sets its own `x-mcp-toolsets` header wins over the env var. Without
-the opt-in the proxy forwards upstream's default toolsets, as before.
+`governance`, `code_security`, ...; `all` enables everything). When the
+key is present it overrides a client-supplied header: the configured
+list is a hard ceiling a client can never expand - a present-but-empty
+value still blocks client headers (upstream then serves its default
+toolsets). When the key is absent, a client header passes through
+unchanged. Without the opt-in the proxy forwards upstream's default
+toolsets, as before.
+
+`GITHUB_MCP_READONLY=1` injects `x-mcp-readonly: true` for every
+session. Upstream then registers only read tools: with
+`default,actions` that is 31 of the 50 tools, and every write-shaped
+tool is gone (`push_files`, `issue_write`, `merge_pull_request`,
+`actions_run_trigger`, the `create_*`/`delete_*` tools). The header is
+overwritten, never merged, so no client can lift it - unlike deny
+rules, which only fail open on drift. Writes return only by editing the
+env file and running `down && up`: an explicit, host-side opt-in. The
+flag is proxy-wide; to keep one writable session while another stays
+read-only, run a second instance on another `PORT` (own env, own
+rules file) and point only trusted clients at it.
+
+`GITHUB_MCP_SCOPE` optionally narrows which repositories sessions can
+touch: a comma list of `owner` or `owner/repo` entries, e.g.
+`GITHUB_MCP_SCOPE=your-login`. When set, a `tools/call` whose
+`owner`/`org`/`organization` does not match an entry is refused
+locally, and calls without a repository subject are refused too -
+except `get_me` and `create_repository`, which only ever describe or
+touch the authenticated account. That takes the roaming `search_*`
+tools and the global advisory readers with it, which is the point: an
+agent steered at someone else's repository fails locally instead of
+fetching it. Bare `owner` entries cover all of that owner's repos plus
+its org-wide tools; `owner/repo` narrows repo calls to one repository
+(org-wide tools then need a bare entry alongside, e.g.
+`you/you-repo,you`). The key present with an empty or separator-only
+value stays active with an empty allowlist: every repository call is
+refused (deny-all) rather than silently unscoped, while
+`get_me`/`create_repository` keep working so the misconfiguration is
+obvious at first use. Like readonly this is host-side and cannot be
+lifted by a client; unlike readonly, `tools/list` stays unchanged (the
+proxy never filters responses) - out-of-scope tools simply refuse when
+called. Hobby baseline: `GITHUB_MCP_SCOPE=<your-login>`.
 
 Log: `/tmp/opencode/github-mcp-proxy.log` (startup lines and blocked calls,
 no per-request logging). It is started by hand on purpose: no systemd unit,
@@ -339,6 +379,8 @@ building hard tool denials in the client:
   you can. For production use a fine-grained PAT limited to the target
   repositories (no workflow access); everything above narrows who may
   merge, not what the token can do elsewhere.
+- **Scope sessions to your own repositories.** `GITHUB_MCP_SCOPE`
+  refuses out-of-scope calls and roaming `search_*` tools (see Install).
 - **Ask before variable lookups.** Actions secrets are write-only (the
   API never returns their value), but Actions *variables* are plain text:
   `gh variable list` and `gh api` print them with a normal token. Unless
@@ -351,7 +393,8 @@ building hard tool denials in the client:
   point. The default toolset has no workflow-trigger tool, but the Actions
   opt-in (`GITHUB_MCP_TOOLSETS`, see Install) adds `actions_run_trigger`,
   which runs, reruns, and cancels workflows - opencode's default `ask`
-  already covers it - and the shell always has one: pin
+  already covers it, and `GITHUB_MCP_READONLY=1` is stronger still (the
+  tool is never registered at all) - and the shell always has one: pin
   `{ "action": "shell", "resource": "gh workflow run *", "effect":
   "ask" }` and `{ "action": "shell", "resource": "gh api *actions*",
   "effect": "ask" }` (dispatches, reruns, cancels).

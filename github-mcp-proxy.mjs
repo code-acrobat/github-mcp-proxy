@@ -11,9 +11,41 @@ import { join } from "node:path"
 
 const PORT = Number(process.env.PORT || 3719)
 const TARGET = new URL(process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/")
-// Opt-in upstream toolsets (e.g. "default,actions"): injected as x-mcp-toolsets
-// unless the client set its own header. Empty = upstream default toolsets.
+// Opt-in upstream toolsets (e.g. "default,actions"): injected as x-mcp-toolsets.
+// Host-side policy: the key present (even empty) overrides any client header -
+// a configured list is a hard ceiling a client can never expand, because the
+// client may be an untrusted sandbox. Key absent = client header passes through.
+const TOOLSETS_SET = process.env.GITHUB_MCP_TOOLSETS !== undefined
 const TOOLSETS = (process.env.GITHUB_MCP_TOOLSETS || "").trim()
+// Read-only enforcement: upstream then registers only read tools (write tools
+// are never offered, so nothing can call them - stronger than deny rules,
+// which fail open on drift). Forced: the client cannot lift it, because the
+// client may be an untrusted sandbox; enabling writes is a host-side edit of
+// GITHUB_MCP_READONLY plus a restart.
+const READONLY = /^(1|true|yes|on)$/i.test((process.env.GITHUB_MCP_READONLY || "").trim())
+// Repo scope: comma list of `owner` or `owner/repo` entries (e.g. "me,my-org/my-repo").
+// Key present (even empty) = active: a tools/call must name an owner/org/
+// organization that matches an entry, and calls without a repository subject
+// are refused except the two account-true tools in SCOPE_OK; an empty list
+// matches nothing, so a truncated config denies instead of unscoping. Fail
+// closed regardless of upstream tool drift, unlike name-based deny rules.
+const SCOPE_SET = process.env.GITHUB_MCP_SCOPE !== undefined
+const SCOPE_RAW = (process.env.GITHUB_MCP_SCOPE || "").trim()
+const SCOPE = SCOPE_RAW.split(",")
+  .map((e) => e.trim())
+  .filter(Boolean)
+  .map((e) => {
+    const i = e.indexOf("/")
+    return i < 0
+      ? { owner: e.toLowerCase(), repo: null }
+      : { owner: e.slice(0, i).toLowerCase(), repo: e.slice(i + 1).toLowerCase() }
+  })
+const SCOPE_OK = new Set(["get_me", "create_repository"])
+const FLAGS = [
+  TOOLSETS_SET && `toolsets: ${TOOLSETS}`,
+  READONLY && "readonly",
+  SCOPE_SET && `scope: ${SCOPE_RAW}`,
+].filter(Boolean).join(", ")
 const HOP = new Set([
   "connection",
   "keep-alive",
@@ -61,6 +93,16 @@ const blockedReason = (body) => {
     if (r.tool !== name) continue
     if (r.if && !Object.entries(r.if).every(([k, v]) => args?.[k] === v)) continue
     return r.reason || `denied ${r.tool}`
+  }
+  if (SCOPE_SET) {
+    const subj = [args?.owner, args?.org, args?.organization].find((v) => typeof v === "string" && v)
+    if (subj !== undefined) {
+      const s = subj.toLowerCase()
+      const repo = typeof args?.repo === "string" ? args.repo.toLowerCase() : null
+      if (SCOPE.some((e) => e.owner === s && (e.repo == null || repo === e.repo))) return null
+      return `scope: ${name} targets ${subj}${args?.repo ? "/" + args.repo : ""} outside GITHUB_MCP_SCOPE`
+    }
+    if (!SCOPE_OK.has(name)) return `scope: ${name} has no owner/org and is outside GITHUB_MCP_SCOPE`
   }
   return null
 }
@@ -143,6 +185,9 @@ http.createServer((req, res) => {
             break
           }
         }
+        // the schema lock must hold for batches too: a locked endpoint denies
+        // every tools/call, whether it arrives alone or hidden in an array
+        if (!reason && lockReason && calls.length) reason = lockReason
       } else {
         reason = blockedReason(body)
         id = body?.id ?? null
@@ -167,7 +212,8 @@ http.createServer((req, res) => {
       if (key === "host" || key === "authorization" || HOP.has(key)) continue
       headers[k] = v
     }
-    if (TOOLSETS && !headers["x-mcp-toolsets"]) headers["x-mcp-toolsets"] = TOOLSETS
+    if (TOOLSETS_SET) headers["x-mcp-toolsets"] = TOOLSETS // overwrite (even empty): configured ceiling, client cannot expand
+    if (READONLY) headers["x-mcp-readonly"] = "true" // overwrite: client cannot lift it
     try {
       headers.authorization = `Bearer ${token()}`
     } catch (e) {
@@ -202,7 +248,6 @@ http.createServer((req, res) => {
   })
 }).listen(PORT, "127.0.0.1", () => {
   console.log(
-    `github mcp proxy on 127.0.0.1:${PORT} -> ${TARGET.href}` +
-      (TOOLSETS ? ` (toolsets: ${TOOLSETS})` : ""),
+    `github mcp proxy on 127.0.0.1:${PORT} -> ${TARGET.href}${FLAGS ? ` (${FLAGS})` : ""}`,
   )
 })

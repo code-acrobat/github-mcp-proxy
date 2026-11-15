@@ -22,8 +22,15 @@ link across instead of copying text.
 - **Request flow:** buffer body -> browser guard (`Origin` or
   `Sec-Fetch-Site` present -> 403 text/plain) -> JSON parse -> policy
   check -> inject `Authorization: Bearer $(gh auth token)` -> forward raw
-  bytes. A set `GITHUB_MCP_TOOLSETS` also injects `x-mcp-toolsets`
-  (unless the client sent its own). Content-length stays intact; SSE
+  bytes. A present `GITHUB_MCP_TOOLSETS` (even empty) injects
+  `x-mcp-toolsets` and `GITHUB_MCP_READONLY=1` injects
+  `x-mcp-readonly: true`; both overwrite any client header (the host
+  owns policy; a configured toolset list is a hard ceiling, clients
+  cannot expand it), and a present `GITHUB_MCP_SCOPE` (even empty =
+  deny-all) refuses out-of-scope `tools/call` inside `blockedReason`
+  (owner/org/organization must match an entry; owner-less calls only
+  `get_me`/`create_repository`).
+  Content-length stays intact; SSE
   responses stream through unbuffered. Blocked calls get a local `200`
   JSON-RPC error
   (`code: -32000`) and one log line, and never reach upstream (the
