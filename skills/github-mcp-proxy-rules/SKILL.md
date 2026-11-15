@@ -84,6 +84,12 @@ four Actions tools: `actions_*` plus `get_job_logs`); those additions
 are expected and rules can ignore them - only movements among tools the
 rules can name matter.
 
+With `GITHUB_MCP_READONLY=1` (README, Install) the live list omits
+every write tool, so profile entries naming one (e.g. `deny_tools:
+push_files`) are reported as `unknown tool`. That is expected - an
+absent tool can never match a deny rule - and those entries can only be
+validated with readonly off.
+
 **Validate the chosen rules against the live schema** - unknown tools,
 unknown `if` arguments, and values that fell out of an enum are reported
 instead of silently never matching. The validator lives next to this file:
