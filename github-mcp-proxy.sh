@@ -3,7 +3,7 @@
 set -u
 SELF=github-mcp-proxy.mjs
 PORT=3719
-LOG=/tmp/opencode/github-mcp-proxy.log
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/github-mcp-proxy"
 
 # optional install-level env (GITHUB_MCP_TOOLSETS, GITHUB_MCP_READONLY,
 # GITHUB_MCP_SCOPE, PORT, GITHUB_MCP_URL);
@@ -11,6 +11,8 @@ LOG=/tmp/opencode/github-mcp-proxy.log
 if [ -r "$HOME/.config/github-mcp-proxy/env" ]; then
   set -a; . "$HOME/.config/github-mcp-proxy/env"; set +a
 fi
+# per port, after the env: an instance on another PORT gets its own log
+LOG="${GITHUB_MCP_LOG:-$STATE/github-mcp-proxy-$PORT.log}"
 
 # match the proxy process only: argv[0] ends in `node` (mise shim execs the
 # real binary path), argv[1] is exactly this script; a shell running
@@ -21,6 +23,7 @@ case "${1:-}" in
   up)
     if [ -n "$(pid)" ]; then echo "already running (pid $(pid))"; exit 0; fi
     mkdir -p "$(dirname "$LOG")"
+    chmod 700 "$STATE" 2>/dev/null || true
     nohup node ~/.local/bin/"$SELF" >>"$LOG" 2>&1 &
     # the pid exists before the listener does: wait for the port, not the process
     ready=""

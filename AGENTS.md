@@ -26,7 +26,7 @@ GitHub calls, this is the whole procedure — no maintainer needed:**
 
 ```sh
 github-mcp-proxy.sh status     # exit 1 / "down" -> start it first
-tail -3 /tmp/opencode/github-mcp-proxy.log   # the exact lock reason
+tail -3 ~/.local/state/github-mcp-proxy/github-mcp-proxy-<port>.log   # the exact lock reason
 github-mcp-proxy.sh check      # release + inventory + policy drift, exit 1 on drift
 ```
 

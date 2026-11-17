@@ -115,7 +115,7 @@ prints `rules valid against live schema`.
 cp <chosen-profile>.json ~/.local/bin/github-mcp-proxy.rules.json   # profiles/ next to this file
 github-mcp-proxy.sh stamp           # profiles carry no snapshot: stamp this policy + inventory
 github-mcp-proxy.sh down && github-mcp-proxy.sh up
-grep -E 'rules:|schema ' /tmp/opencode/github-mcp-proxy.log | tail -2
+grep -E 'rules:|schema ' ~/.local/state/github-mcp-proxy/github-mcp-proxy-*.log | tail -2
 # expect: rules: N deny_tools, M deny_calls active (schema …)
 #         schema ok: K tools match the rules snapshot (upstream …)
 ```
