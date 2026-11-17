@@ -120,6 +120,10 @@ restore_env() {
   # the control script's pid() matches any proxy, not this port: kill whatever is
   # left, or the walk's own instance keeps serving 3719 after it exits
   for p in $(pgrep -f 'github-mcp-proxy\.mjs' 2>/dev/null); do kill "$p" 2>/dev/null; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -f 'github-mcp-proxy\.mjs' >/dev/null 2>&1 || break
+    sleep 0.2
+  done
 }
 # a killed walk must still restore: EXIT alone never fires on SIGTERM
 trap 'exit 130' INT TERM
@@ -130,7 +134,6 @@ mkdir -p "$(dirname "$ENVF")"
 # ship current files, then walk the profiles (a fresh HOME has no ~/.local/bin)
 mkdir -p "$BIN"
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
-chmod +x "$BIN/github-mcp-proxy.mjs" "$BIN/github-mcp-proxy.sh"
 # every profile has to be stamped for the policy of this walk, or the schema
 # lock refuses the calls the walk is about to assert on
 stampit() { node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null || { echo "FAIL stamp"; FAIL=1; }; }
