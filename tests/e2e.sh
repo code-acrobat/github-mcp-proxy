@@ -1,7 +1,9 @@
 #!/bin/bash
 # Live: walks all three profiles through the installed proxy and asserts
 # block/forward behavior (deny_tools, deny_calls arg matching, malformed
-# entry handling), then restores the shipped rules.
+# entry handling). Every profile is stamped for the walk's policy first (the
+# schema lock refuses calls otherwise), and on exit the caller's env file, rules
+# file and proxy state are restored.
 # Needs: proxy files installed in ~/.local/bin, `gh` logged in on the host,
 # network reachability for the forwarded probes. Exit 0 = all green.
 set -u
@@ -98,16 +100,32 @@ BATCHGET='[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"met
 ENVF="$HOME/.config/github-mcp-proxy/env"
 ENVSAVE=$(mktemp) HADENV=0
 [ -r "$ENVF" ] && { cp "$ENVF" "$ENVSAVE"; HADENV=1; }
+RULES="$BIN/github-mcp-proxy.rules.json"
+RULESAVE=""
+if [ -f "$RULES" ]; then RULESAVE="$(mktemp)"; cp "$RULES" "$RULESAVE"; fi
+
 restore_env() {
   if [ "$HADENV" = 1 ]; then cp "$ENVSAVE" "$ENVF"; else rm -f "$ENVF"; fi
   rm -f "$ENVSAVE"
+  # the walk leaves its last profile installed and stamped for the walk policy:
+  # put the caller's rules back and bring the proxy up on them, or the next start
+  # locks on a policy mismatch
+  if [ -n "$RULESAVE" ]; then cp "$RULESAVE" "$RULES"; rm -f "$RULESAVE"; fi
+  "$BIN/github-mcp-proxy.sh" down >/dev/null 2>&1
+  "$BIN/github-mcp-proxy.sh" up >/dev/null 2>&1
 }
+# a killed walk must still restore: EXIT alone never fires on SIGTERM
+trap 'exit 130' INT TERM
 trap restore_env EXIT
 mkdir -p "$(dirname "$ENVF")"
 : > "$ENVF"   # profile walk runs on upstream defaults, whatever the user had
 
 # ship current files, then walk the profiles
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
+# every profile has to be stamped for the policy of this walk, or the schema
+# lock refuses the calls the walk is about to assert on
+stampit() { node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null || { echo "FAIL stamp"; FAIL=1; }; }
+stampit
 echo "== hobby (shipped) =="
 restart
 check "hobby approve" "$APPROVE" blocked
@@ -121,6 +139,7 @@ check "hobby unparseable body refused" '{not json' blocked
 
 echo "== corporate-agentic =="
 cp "$S/profiles/corporate-agentic.json" "$BIN/github-mcp-proxy.rules.json"
+stampit
 restart
 check "agentic approve" "$APPROVE" blocked
 check "agentic merge" "$MERGE" blocked
@@ -129,6 +148,7 @@ check "agentic get_pr" "$GETPR" forward
 
 echo "== corporate-assisted =="
 cp "$S/profiles/corporate-assisted.json" "$BIN/github-mcp-proxy.rules.json"
+stampit
 restart
 check "assisted approve" "$APPROVE" blocked
 check "assisted push main" "$PUSHMAIN" blocked
