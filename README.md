@@ -218,6 +218,46 @@ Deliberately minimal. Treat it as a tool you read and run, not a product:
 - **No auto-restart.** One plain background process, no systemd unit; it dies
   on reboot or logout (see Install).
 
+## Schema lock (deny rules that cannot drift silently)
+
+Deny rules match tool *names*, so a renamed or newly added upstream tool would
+quietly disarm them. The rules therefore carry the identity and **tool
+inventory** they were generated against, and the proxy verifies both at startup
+— with the same policy headers a client gets, because the registered inventory
+depends on them:
+
+```json
+{ "schema": "github-mcp-server@remote-<build>",
+  "tools": ["add_issue_comment", "…"],
+  "snapshot": { "toolsets": "default,actions", "readonly": false } }
+```
+
+Any of these locks the endpoint — every `tools/call` is refused, single or in a
+batch, while `tools/list` and `initialize` still pass so the lock can be cleared:
+
+- no rules file, an unparsable one, no `schema` stamp, or no `tools` snapshot;
+- the policy changed since the stamp (`toolsets` / `readonly` — the surface is
+  different, so the rules must be re-confirmed);
+- the live tool inventory differs from the snapshot (the message names what was
+  added and removed);
+- the upstream is unreachable at startup (3 attempts), or a pin mismatches
+  (`GITHUB_MCP_UPSTREAM_VERSION`).
+
+Clearing it is one command, and it is deliberate — the point is that a human
+looks at the inventory diff before the rules are accepted again:
+
+```sh
+github-mcp-proxy.sh stamp      # re-baseline identity + inventory + policy
+github-mcp-proxy.sh down && up
+```
+
+`GITHUB_MCP_SCHEMA_LOCK=off` restores the old behaviour (identity check only,
+rules forwarded as written); the rules-drift skill remains the offline review of
+what a new inventory means for the deny lists. Profiles under
+`skills/github-mcp-proxy-rules/profiles/` ship **without** a snapshot on
+purpose: they are templates for a policy you have not chosen yet, so the first
+start asks for a stamp instead of firing on someone else's settings.
+
 ## Security notes
 
 Safe by design:

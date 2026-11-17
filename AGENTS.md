@@ -19,6 +19,13 @@ link across instead of copying text.
 
 ## Invariants (do not regress)
 
+- **Schema lock = fail closed.** Rules carry `schema` (upstream identity),
+  `tools` (inventory) and `snapshot` (policy fingerprint); any mismatch, missing
+  stamp, unparsable rules or an unreachable upstream at startup denies every
+  `tools/call` until `--stamp` + restart. `GITHUB_MCP_SCHEMA_LOCK=off` is the
+  documented, explicit escape — never the default.
+
+
 - **Request flow:** buffer body -> browser guard (`Origin` or
   `Sec-Fetch-Site` present -> 403 text/plain) -> JSON parse -> policy
   check -> inject `Authorization: Bearer $(gh auth token)` -> forward raw

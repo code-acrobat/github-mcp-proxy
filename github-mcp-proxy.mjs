@@ -6,8 +6,8 @@
 import http from "node:http"
 import https from "node:https"
 import { execFileSync } from "node:child_process"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync, writeFileSync } from "node:fs"
+import { basename, join } from "node:path"
 
 const PORT = Number(process.env.PORT || 3719)
 const TARGET = new URL(process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/")
@@ -72,8 +72,12 @@ const token = () => execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).
 // never matching.
 let denyCalls = []
 const denyTools = new Set()
+const RULES_FILE = join(import.meta.dirname, "github-mcp-proxy.rules.json")
+let rulesCfg = null
+let rulesError = null
 try {
-  const cfg = JSON.parse(readFileSync(join(import.meta.dirname, "github-mcp-proxy.rules.json"), "utf8"))
+  const cfg = JSON.parse(readFileSync(RULES_FILE, "utf8"))
+  rulesCfg = cfg
   const all = cfg.deny_calls ?? []
   denyCalls = all.filter((d) => typeof d?.tool === "string" && (d.if == null || typeof d.if === "object"))
   if (denyCalls.length < all.length) console.error(`rules: dropped ${all.length - denyCalls.length} malformed deny_calls entries`)
@@ -87,7 +91,7 @@ try {
       `rules: ${denyTools.size} deny_tools, ${denyCalls.length} deny_calls active (schema ${cfg.schema ?? "unspecified"})`,
     )
 } catch (e) {
-  if (e.code !== "ENOENT") console.error(`rules unusable (${e.message}); forwarding all calls`)
+  rulesError = e.code === "ENOENT" ? "missing" : e.message
 }
 
 // ponytail: exact match on the listed arg pairs only; add a `missing:` check when a rule needs absence
@@ -143,50 +147,153 @@ if (process.argv.includes("--selftest")) {
   eq("empty scope is deny-all", true, empty(call("list_issues", { owner: "acme", repo: "lib" })))
   eq("empty scope still allows get_me", false, empty(call("get_me", {})))
   eq("no scope = no scope check", false, mkBlockedReason(false, [])(call("list_issues", { owner: "evil", repo: "x" })))
-  console.log("selftest ok")
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+eq("inventory diff: unchanged", true, same(inventoryDiff(["a", "b"], ["a", "b"]), { added: [], gone: [] }))
+eq("inventory diff: added", true, same(inventoryDiff(["a"], ["a", "b"]), { added: ["b"], gone: [] }))
+eq("inventory diff: removed", true, same(inventoryDiff(["a", "b"], ["a"]), { added: [], gone: ["b"] }))
+eq("inventory formatting: short list", true, fmtList(["x"]) === "x")
+eq("inventory formatting: caps long lists", true, fmtList(["1", "2", "3", "4", "5", "6", "7"]) === "1, 2, 3, 4, 5, 6 +1 more")
+console.log("selftest ok")
   process.exit(0)
 }
 
-// Schema lock - identity check only. The hosted endpoint reports its own
-// version on initialize (a commit hash, e.g. github-mcp-server/remote-<sha>).
-// Newer commit hashes are expected and must NOT lock: the latest release tag
-// is sufficient, deploy-hash churn does not break the interface. Re-evaluating
-// tool schemas against a new tag stays the skill's offline drift check (see
-// AGENTS.md "Working on rules"). This lock only fires when a successful
-// initialize answers with a different server name or no version at all -
-// i.e. the endpoint stopped being the GitHub MCP server. An unreachable
-// initialize does not lock (the per-request 502 surfaces that instead).
-let lockReason = null
-try {
-  let tok = null
-  try { tok = token() } catch {}
-  if (tok) {
-    const r = await fetch(TARGET.href, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-        authorization: `Bearer ${tok}`,
-        "user-agent": "github-mcp-proxy",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "github-mcp-proxy", version: "0" } },
-      }),
-      signal: AbortSignal.timeout(8000),
-    })
-    const text = await r.text()
-    const line = text.split("\n").find((l) => l.startsWith("data: "))
-    const info = JSON.parse(line ? line.slice(6) : text)?.result?.serverInfo
-    if (!info?.version) {
-      lockReason = "upstream did not report serverInfo.version on initialize"
-    } else if (info.name && info.name !== "github-mcp-server") {
-      lockReason = `upstream identifies as ${info.name}, expected github-mcp-server`
-    } else {
-      console.log(`schema ok: upstream identifies as ${info.name ?? "github-mcp-server"} ${info.version} (identity lock; tag re-eval is the skill's drift check)`)
-    }
+// One place speaks the session protocol: identity + inventory, with the same
+// policy headers a client gets (the registered inventory depends on them).
+const policyNow = () => ({ toolsets: TOOLSETS_SET ? TOOLSETS : null, readonly: READONLY })
+const parseFrame = (t) => {
+  const line = t.split("\n").find((l) => l.startsWith("data: "))
+  return JSON.parse(line ? line.slice(6) : t)
+}
+const policyHeaders = (tok) => ({
+  "content-type": "application/json",
+  accept: "application/json, text/event-stream",
+  authorization: `Bearer ${tok}`,
+  "user-agent": "github-mcp-proxy",
+  ...(TOOLSETS_SET ? { "x-mcp-toolsets": TOOLSETS } : {}),
+  ...(READONLY ? { "x-mcp-readonly": "true" } : {}),
+})
+async function openSession() {
+  const h = policyHeaders(token())
+  const init = await fetch(TARGET.href, {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "github-mcp-proxy", version: "0" } },
+    }),
+    signal: AbortSignal.timeout(8000),
+  })
+  const sid = init.headers.get("mcp-session-id")
+  const info = parseFrame(await init.text())?.result?.serverInfo
+  if (!info?.version) throw new Error("upstream did not report serverInfo.version")
+  const h2 = { ...h }
+  if (sid) h2["mcp-session-id"] = sid
+  await fetch(TARGET.href, {
+    method: "POST",
+    headers: h2,
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => {})
+  const listRes = await fetch(TARGET.href, {
+    method: "POST",
+    headers: h2,
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+    signal: AbortSignal.timeout(15000),
+  })
+  const tools = parseFrame(await listRes.text())?.result?.tools
+  if (!Array.isArray(tools) || !tools.length) throw new Error("upstream reported no tool inventory")
+  return { info, live: tools.map((t) => t.name).filter(Boolean).sort() }
+}
+function inventoryDiff(snapshot, live) {
+  const want = new Set(snapshot ?? [])
+  const have = new Set(live)
+  return {
+    added: live.filter((t) => !want.has(t)),
+    gone: (snapshot ?? []).filter((t) => !have.has(t)),
   }
-} catch {}
+}
+function samePolicy(stamped, now) {
+  if (!stamped) return true
+  return (stamped.toolsets ?? null) === (now.toolsets ?? null) && Boolean(stamped.readonly) === Boolean(now.readonly)
+}
+function fmtList(l) {
+  return l.length > 6 ? `${l.slice(0, 6).join(", ")} +${l.length - 6} more` : l.join(", ")
+}
+
+// --stamp re-baselines the rules against the live upstream: identity + inventory.
+// It needs a reachable upstream but not a passing lock, so it is the recovery path.
+if (process.argv.includes("--stamp")) {
+  try {
+    const { info, live } = await openSession()
+    const cfg = rulesCfg ?? {}
+    const before = Array.isArray(cfg.tools) ? cfg.tools : []
+    const name = info.name || "github-mcp-server"
+    cfg.schema = `${name}@${String(info.version).replace(`${name}/`, "")}`
+    cfg.tools = live
+    cfg.snapshot = policyNow()
+    writeFileSync(RULES_FILE, `${JSON.stringify(cfg, null, 2)}\n`)
+    console.log(`stamped ${RULES_FILE}: ${cfg.schema}, ${live.length} tools, policy ${JSON.stringify(cfg.snapshot)}`)
+    if (before.length) {
+      const { added, gone } = inventoryDiff(before, live)
+      console.log(`inventory: +${added.length} [${fmtList(added) || "-"}], -${gone.length} [${fmtList(gone) || "-"}]`)
+    }
+    process.exit(0)
+  } catch (e) {
+    console.error(`stamp failed: ${e.message}`)
+    process.exit(1)
+  }
+}
+
+// Schema lock: the rules carry the tool inventory they were written against,
+// and every tool call is refused when the live inventory differs. Deny rules
+// are name-based, so a renamed or newly added tool is exactly the drift that
+// would silently disarm them; the build id (remote-<sha>) churns on deploys
+// that touch no tool and is recorded, not compared, unless
+// GITHUB_MCP_UPSTREAM_VERSION pins it. GITHUB_MCP_SCHEMA_LOCK=off restores the
+// previous behaviour (identity check only).
+const normV = (v) => String(v ?? "").replace(/^v/, "")
+const lockOff = /^(0|off|no|false)$/i.test(String(process.env.GITHUB_MCP_SCHEMA_LOCK ?? "").trim())
+if (lockOff && rulesError) console.error(`rules unusable (${rulesError}); forwarding all calls (schema lock off)`)
+const pinned = process.env.GITHUB_MCP_UPSTREAM_VERSION || null
+const snapshot = Array.isArray(rulesCfg?.tools) ? rulesCfg.tools.filter((t) => typeof t === "string") : null
+let lockReason = null
+
+if (!lockOff) {
+  const then = rulesCfg?.snapshot ?? null
+  if (rulesError === "missing")
+    lockReason = `no ${basename(RULES_FILE)} (no rules, no inventory to verify) — run github-mcp-proxy.sh stamp to generate one, or set GITHUB_MCP_SCHEMA_LOCK=off`
+  else if (rulesError) lockReason = `rules unusable (${rulesError}) — fix or remove them, then restart`
+  else if (!rulesCfg?.schema) lockReason = 'rules are not stamped with the upstream identity — set "schema": "<server>@<build>" via github-mcp-proxy.sh stamp'
+  else if (!snapshot?.length) lockReason = 'rules carry no "tools" inventory snapshot — run github-mcp-proxy.sh stamp, then restart'
+  else if (!samePolicy(then, policyNow()))
+    lockReason = `policy changed since the rules were stamped (${JSON.stringify(then)} -> ${JSON.stringify(policyNow())}) — the registered inventory differs; re-stamp, then restart`
+  else {
+    let lastErr = null
+    for (let attempt = 0; attempt < 3 && !lockReason; attempt++) {
+      try {
+        const { info, live } = await openSession()
+        if (info.name && info.name !== "github-mcp-server") {
+          lockReason = `upstream identifies as ${info.name}, expected github-mcp-server`
+          break
+        }
+        if (pinned && normV(info.version) !== normV(pinned)) {
+          lockReason = `upstream build ${info.version} != pinned GITHUB_MCP_UPSTREAM_VERSION ${pinned} — re-stamp after verifying, then restart`
+          break
+        }
+        const { added, gone } = inventoryDiff(snapshot, live)
+        if (added.length || gone.length)
+          lockReason = `tool inventory changed (upstream build ${info.version}): added [${fmtList(added) || "-"}], removed [${fmtList(gone) || "-"}] — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up`
+        else console.log(`schema ok: ${live.length} tools match the rules snapshot (upstream ${info.version})`)
+        break
+      } catch (e) {
+        lastErr = e
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 500))
+      }
+    }
+    if (!lockReason && lastErr)
+      lockReason = `schema check failed: upstream unreachable at startup (${lastErr.message}) — restart once it is reachable, or set GITHUB_MCP_SCHEMA_LOCK=off`
+  }
+}
 if (lockReason) console.log(`schema LOCKED: ${lockReason}; tools/call denied until the endpoint is back or you restart`)
 
 http.createServer((req, res) => {
