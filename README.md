@@ -243,7 +243,15 @@ batch, while `tools/list` and `initialize` still pass so the lock can be cleared
 - the upstream is unreachable at startup (3 attempts), or a pin mismatches
   (`GITHUB_MCP_UPSTREAM_VERSION`).
 
-Clearing it is one command, and it is deliberate — the point is that a human
+A **new upstream release is not a lock**: the endpoint publishes every ~2 weeks
+and most releases touch no tool, so a release newer than the stamp only prints a
+note at startup (`upstream published vX, rules were stamped vY — inventory
+unchanged, so nothing is refused`). The rules are re-baselined when the
+*interface* changes, which is exactly what the inventory check watches.
+`github-mcp-proxy.sh check` prints release, inventory and policy drift side by
+side for the maintenance pass.
+
+Clearing a lock is one command, and it is deliberate — the point is that a human
 looks at the inventory diff before the rules are accepted again:
 
 ```sh

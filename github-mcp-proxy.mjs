@@ -172,8 +172,25 @@ const policyHeaders = (tok) => ({
   ...(TOOLSETS_SET ? { "x-mcp-toolsets": TOOLSETS } : {}),
   ...(READONLY ? { "x-mcp-readonly": "true" } : {}),
 })
+const UPSTREAM_REPO = process.env.GITHUB_MCP_UPSTREAM_REPO || "github/github-mcp-server"
+// The hosted endpoint reports a build id (remote-<sha>) and no release, so the
+// release label comes from the upstream repo: the stamp records the latest
+// published one, and --check reports when a newer one exists.
+async function latestRelease(tok) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest`, {
+      headers: { authorization: `Bearer ${tok}`, accept: "application/vnd.github+json", "user-agent": "github-mcp-proxy" },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!r.ok) return null
+    return (await r.json())?.tag_name ?? null
+  } catch {
+    return null
+  }
+}
 async function openSession() {
-  const h = policyHeaders(token())
+  const tok = token()
+  const h = policyHeaders(tok)
   const init = await fetch(TARGET.href, {
     method: "POST",
     headers: h,
@@ -202,7 +219,7 @@ async function openSession() {
   })
   const tools = parseFrame(await listRes.text())?.result?.tools
   if (!Array.isArray(tools) || !tools.length) throw new Error("upstream reported no tool inventory")
-  return { info, live: tools.map((t) => t.name).filter(Boolean).sort() }
+  return { tok, info, live: tools.map((t) => t.name).filter(Boolean).sort() }
 }
 function inventoryDiff(snapshot, live) {
   const want = new Set(snapshot ?? [])
@@ -211,6 +228,11 @@ function inventoryDiff(snapshot, live) {
     added: live.filter((t) => !want.has(t)),
     gone: (snapshot ?? []).filter((t) => !have.has(t)),
   }
+}
+// serverInfo.version is "<name>/<build>"; users should be able to pin the build.
+function normBuild(v, name) {
+  const n = String(name || "github-mcp-server")
+  return normV(String(v ?? "").replace(new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`), ""))
 }
 function samePolicy(stamped, now) {
   if (!stamped) return true
@@ -224,15 +246,18 @@ function fmtList(l) {
 // It needs a reachable upstream but not a passing lock, so it is the recovery path.
 if (process.argv.includes("--stamp")) {
   try {
-    const { info, live } = await openSession()
+    const { tok, info, live } = await openSession()
     const cfg = rulesCfg ?? {}
     const before = Array.isArray(cfg.tools) ? cfg.tools : []
     const name = info.name || "github-mcp-server"
-    cfg.schema = `${name}@${String(info.version).replace(`${name}/`, "")}`
+    const release = await latestRelease(tok)
+    cfg.schema = `${name}@${release ?? String(info.version).replace(`${name}/`, "")}`
+    cfg.build = info.version
     cfg.tools = live
     cfg.snapshot = policyNow()
     writeFileSync(RULES_FILE, `${JSON.stringify(cfg, null, 2)}\n`)
-    console.log(`stamped ${RULES_FILE}: ${cfg.schema}, ${live.length} tools, policy ${JSON.stringify(cfg.snapshot)}`)
+    console.log(`stamped ${RULES_FILE}: ${cfg.schema}${release ? "" : " (release unresolved, build id used)"}, ${live.length} tools, policy ${JSON.stringify(cfg.snapshot)}`)
+    console.log(`build: ${info.version}`)
     if (before.length) {
       const { added, gone } = inventoryDiff(before, live)
       console.log(`inventory: +${added.length} [${fmtList(added) || "-"}], -${gone.length} [${fmtList(gone) || "-"}]`)
@@ -240,6 +265,23 @@ if (process.argv.includes("--stamp")) {
     process.exit(0)
   } catch (e) {
     console.error(`stamp failed: ${e.message}`)
+    process.exit(1)
+  }
+}
+
+if (process.argv.includes("--check")) {
+  try {
+    const { tok, info, live } = await openSession()
+    const release = await latestRelease(tok)
+    const stampedTools = Array.isArray(rulesCfg?.tools) ? rulesCfg.tools : []
+    const { added, gone } = inventoryDiff(stampedTools, live)
+    console.log(`stamped : ${rulesCfg?.schema ?? "(no stamp)"}${rulesCfg?.build ? `  build ${rulesCfg.build}` : ""}`)
+    console.log(`upstream: ${info.name ?? "?"} ${info.version}  latest release ${release ?? "unresolved"}`)
+    console.log(`inventory: ${live.length} live / ${stampedTools.length} stamped — +${added.length} [${fmtList(added) || "-"}] -${gone.length} [${fmtList(gone) || "-"}]`)
+    console.log(`policy  : stamped ${JSON.stringify(rulesCfg?.snapshot ?? null)} now ${JSON.stringify(policyNow())}`)
+    process.exit(0)
+  } catch (e) {
+    console.error(`check failed: ${e.message}`)
     process.exit(1)
   }
 }
@@ -271,15 +313,25 @@ if (!lockOff) {
     let lastErr = null
     for (let attempt = 0; attempt < 3 && !lockReason; attempt++) {
       try {
-        const { info, live } = await openSession()
+        const { tok, info, live } = await openSession()
         if (info.name && info.name !== "github-mcp-server") {
           lockReason = `upstream identifies as ${info.name}, expected github-mcp-server`
           break
         }
-        if (pinned && normV(info.version) !== normV(pinned)) {
-          lockReason = `upstream build ${info.version} != pinned GITHUB_MCP_UPSTREAM_VERSION ${pinned} — re-stamp after verifying, then restart`
+        if (pinned && normBuild(info.version, info.name) !== normV(pinned)) {
+          const hint = /^v?\d+\./.test(String(pinned))
+            ? "GITHUB_MCP_UPSTREAM_VERSION compares the build id this endpoint reports, not a release tag (it reports none) — pin the build, or use `check` for release drift"
+            : "re-stamp after verifying, then restart"
+          lockReason = `upstream build ${info.version} != pinned GITHUB_MCP_UPSTREAM_VERSION ${pinned} — ${hint}`
           break
         }
+        const release = await latestRelease(tok)
+        const stampedLabel = String(rulesCfg?.schema ?? "")
+        if (release && /@v?\d/.test(stampedLabel) && !stampedLabel.endsWith(`@${release}`))
+          console.log(
+            `note: upstream published ${release}, rules were stamped ${stampedLabel.split("@").pop()} — inventory unchanged, so nothing is refused; run \`github-mcp-proxy.sh check\` and re-stamp when a release actually changes tools`,
+          )
+        else if (!release) console.log("note: upstream releases unreachable at startup (inventory check still applies)")
         const { added, gone } = inventoryDiff(snapshot, live)
         if (added.length || gone.length)
           lockReason = `tool inventory changed (upstream build ${info.version}): added [${fmtList(added) || "-"}], removed [${fmtList(gone) || "-"}] — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up`
