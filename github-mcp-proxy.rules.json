@@ -1,5 +1,5 @@
 {
-  "schema": "github-mcp-server@remote-0ce1ed67807811c536b24b3c836fb021a3912b62",
+  "schema": "github-mcp-server@v2.2.0",
   "deny_calls": [
     {
       "tool": "pull_request_review_write",
@@ -60,5 +60,6 @@
   "snapshot": {
     "toolsets": null,
     "readonly": false
-  }
+  },
+  "build": "github-mcp-server/remote-0ce1ed67807811c536b24b3c836fb021a3912b62"
 }
