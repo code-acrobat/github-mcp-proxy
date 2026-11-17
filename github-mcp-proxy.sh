@@ -39,6 +39,13 @@ case "${1:-}" in
     for _ in {1..10}; do [ -z "$(pid)" ] && break; sleep 0.2; done
     echo "stopped"
     ;;
+  stamp)
+    node "$HOME/.local/bin/$SELF" --stamp || exit 1
+    echo "apply it: $0 down && $0 up"
+    ;;
+  check)
+    node "$HOME/.local/bin/$SELF" --check
+    ;;
   status)
     if [ -z "$(pid)" ]; then echo "down"; exit 1; fi
     # a real initialize: an empty POST is answered 415 by the proxy itself
@@ -47,5 +54,5 @@ case "${1:-}" in
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"status","version":"0"}}}') || code=unreachable
     printf 'up (pid %s), port %s: %s\n' "$(pid)" "$PORT" "$code"
     ;;
-  *) echo "usage: $0 up|down|status" >&2; exit 2 ;;
+  *) echo "usage: $0 up|down|status|stamp|check" >&2; exit 2 ;;
 esac

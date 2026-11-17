@@ -17,7 +17,55 @@ link across instead of copying text.
 | `tests/` | `validate.sh` (offline), `e2e.sh` (live) |
 | `.github/workflows/ci.yml` | CI: syntax checks + offline test only |
 
+## Drift and recovery (the advice a session can follow)
+
+The proxy refuses every `tools/call` when its rules no longer match the running
+upstream. That is a lock, not a crash: `initialize` and `tools/list` still answer,
+so the repair works from inside the locked state. **If a session reports blocked
+GitHub calls, this is the whole procedure — no maintainer needed:**
+
+```sh
+github-mcp-proxy.sh status     # exit 1 / "down" -> start it first
+tail -3 /tmp/opencode/github-mcp-proxy.log   # the exact lock reason
+github-mcp-proxy.sh check      # release + inventory + policy drift, exit 1 on drift
+```
+
+Then, depending on what `check` says:
+
+| `check` says | do |
+|---|---|
+| **inventory drift** (`+[tool]` / `-[tool]`) | re-stamp: `github-mcp-proxy.sh stamp && github-mcp-proxy.sh down && up`. Read the diff the stamp prints: a **new** tool is worth a look — if it writes or touches repositories, add it to `deny_tools` **before** stamping (a second `stamp` afterwards is harmless). |
+| **policy drift** (`readonly` / `toolsets` changed) | expected when you flipped `GITHUB_MCP_READONLY` or the toolsets — re-stamp and restart. |
+| **release note only** (newer release, inventory identical) | nothing is blocked; re-stamp when convenient. |
+| **identity change** (upstream renamed itself) | re-stamp; the stamp records the new name. |
+| **`stamp` fails** | it needs a reachable upstream and a logged-in `gh` (`gh auth status`). The lock does not block this path. |
+
+Verify after repairing: `github-mcp-proxy.sh check` exits 0 and the log line is
+`schema ok: <n> tools match the rules snapshot`.
+
+**If the installed copy is older than the repo** (a release changed the rules
+format, the control script, or `--stamp` itself), refresh it first — the
+installed `~/.local/bin/github-mcp-proxy.{mjs,sh,rules.json}` is a copy, not a
+link:
+
+```sh
+# tngomac users: re-running the component does both steps in one go
+~/tngomac_workspace/tngomac/bin/install.sh github
+# standalone installs: copy the three files from the clone, then stamp as above
+```
+
+Rule of thumb for agents: **`check` → read the diff → `stamp` → `down && up` →
+`check` exits 0.** Never widen the toolset or drop `GITHUB_MCP_READONLY` as a
+"fix" for a lock.
+
 ## Invariants (do not regress)
+
+- **Schema lock = fail closed.** Rules carry `schema` (upstream identity),
+  `tools` (inventory) and `snapshot` (policy fingerprint); any mismatch, missing
+  stamp, unparsable rules or an unreachable upstream at startup denies every
+  `tools/call` until `--stamp` + restart. `GITHUB_MCP_SCHEMA_LOCK=off` is the
+  documented, explicit escape — never the default.
+
 
 - **Request flow:** buffer body -> browser guard (`Origin` or
   `Sec-Fetch-Site` present -> 403 text/plain) -> JSON parse -> policy
