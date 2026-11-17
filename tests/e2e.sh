@@ -8,7 +8,7 @@
 # Needs: proxy files installed in ~/.local/bin, `gh` logged in on the host,
 # network reachability for the forwarded probes. Exit 0 = all green.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 BIN="$HOME/.local/bin"
 S=skills/github-mcp-proxy-rules
 P=http://127.0.0.1:3719/mcp
@@ -30,8 +30,7 @@ restart() {
 # `up` returns once the pid exists, but the proxy only listens after its
 # startup schema-lock probe upstream, so poll until the port accepts.
 wait_up() {
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  for _ in {1..20}; do
     if (exec 3<>/dev/tcp/127.0.0.1/3719) 2>/dev/null; then return 0; fi
     sleep 0.5
   done
@@ -120,7 +119,7 @@ restore_env() {
   # the control script's pid() matches any proxy, not this port: kill whatever is
   # left, or the walk's own instance keeps serving 3719 after it exits
   for p in $(pgrep -f 'github-mcp-proxy\.mjs' 2>/dev/null); do kill "$p" 2>/dev/null; done
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for _ in {1..10}; do
     pgrep -f 'github-mcp-proxy\.mjs' >/dev/null 2>&1 || break
     sleep 0.2
   done
