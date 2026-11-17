@@ -31,16 +31,23 @@ const READONLY = /^(1|true|yes|on)$/i.test((process.env.GITHUB_MCP_READONLY || "
 // closed regardless of upstream tool drift, unlike name-based deny rules.
 const SCOPE_SET = process.env.GITHUB_MCP_SCOPE !== undefined
 const SCOPE_RAW = (process.env.GITHUB_MCP_SCOPE || "").trim()
-const SCOPE = SCOPE_RAW.split(",")
-  .map((e) => e.trim())
-  .filter(Boolean)
-  .map((e) => {
-    const i = e.indexOf("/")
-    return i < 0
-      ? { owner: e.toLowerCase(), repo: null }
-      : { owner: e.slice(0, i).toLowerCase(), repo: e.slice(i + 1).toLowerCase() }
-  })
-const SCOPE_OK = new Set(["get_me", "create_repository"])
+const parseScope = (raw) =>
+  raw.split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .map((e) => {
+      const i = e.indexOf("/")
+      return i < 0
+        ? { owner: e.toLowerCase(), repo: null }
+        : { owner: e.slice(0, i).toLowerCase(), repo: e.slice(i + 1).toLowerCase() }
+    })
+const SCOPE = parseScope(SCOPE_RAW)
+// Subject-less calls allowed under a scope: get_me only. Everything else
+// either names a subject (checked) or is refused.
+const SCOPE_OK = new Set(["get_me"])
+// Free-text query tools: the query can name any repository, so no argument
+// check can confine them. Refused while a scope is active.
+const SCOPE_REFUSED = new Set(["search_issues", "search_pull_requests"])
 const FLAGS = [
   TOOLSETS_SET && `toolsets: ${TOOLSETS}`,
   READONLY && "readonly",
@@ -84,7 +91,7 @@ try {
 }
 
 // ponytail: exact match on the listed arg pairs only; add a `missing:` check when a rule needs absence
-const blockedReason = (body) => {
+const mkBlockedReason = (scopeSet, scope) => (body) => {
   if (body?.method !== "tools/call") return null
   const name = body?.params?.name
   if (denyTools.has(name)) return `denied ${name}`
@@ -94,17 +101,50 @@ const blockedReason = (body) => {
     if (r.if && !Object.entries(r.if).every(([k, v]) => args?.[k] === v)) continue
     return r.reason || `denied ${r.tool}`
   }
-  if (SCOPE_SET) {
-    const subj = [args?.owner, args?.org, args?.organization].find((v) => typeof v === "string" && v)
-    if (subj !== undefined) {
-      const s = subj.toLowerCase()
+  if (scopeSet) {
+    if (SCOPE_REFUSED.has(name)) return `scope: ${name} takes a free-text query that can name any repository`
+    const subj = ["owner", "org", "organization"]
+      .map((k) => args?.[k])
+      .filter((v) => typeof v === "string" && v)
+    if (subj.length) {
       const repo = typeof args?.repo === "string" ? args.repo.toLowerCase() : null
-      if (SCOPE.some((e) => e.owner === s && (e.repo == null || repo === e.repo))) return null
-      return `scope: ${name} targets ${subj}${args?.repo ? "/" + args.repo : ""} outside GITHUB_MCP_SCOPE`
+      const ok = (o) => scope.some((e) => e.owner === o && (e.repo == null || repo === e.repo))
+      const bad = subj.find((v) => !ok(v.toLowerCase()))
+      if (bad) return `scope: ${name} targets ${bad}${args?.repo ? "/" + args.repo : ""} outside GITHUB_MCP_SCOPE`
+      return null
     }
     if (!SCOPE_OK.has(name)) return `scope: ${name} has no owner/org and is outside GITHUB_MCP_SCOPE`
   }
   return null
+}
+const blockedReason = mkBlockedReason(SCOPE_SET, SCOPE)
+
+if (process.argv.includes("--selftest")) {
+  const call = (name, args) => ({ method: "tools/call", params: { name, arguments: args } })
+  const deny = mkBlockedReason(true, parseScope("acme,acme/lib"))
+  const eq = (why, want, got) => {
+    if (Boolean(got) !== want) {
+      console.error(`FAIL ${why}: got ${JSON.stringify(got)}, want ${want ? "blocked" : "allowed"}`)
+      process.exit(1)
+    }
+  }
+  eq("in-scope owner/repo passes", false, deny(call("list_issues", { owner: "acme", repo: "lib" })))
+  eq("out-of-scope owner refused", true, deny(call("list_issues", { owner: "evil", repo: "x" })))
+  eq("fork under the scoped owner passes", false, deny(call("fork_repository", { owner: "acme", repo: "lib" })))
+  eq("fork into an unscoped org refused", true,
+    deny(call("fork_repository", { owner: "acme", repo: "lib", organization: "evil" })))
+  eq("create_repository via a scoped org passes", false, deny(call("create_repository", { name: "x", organization: "acme" })))
+  eq("create_repository into the personal account refused", true, deny(call("create_repository", { name: "x" })))
+  eq("search tools refused under scope", true, deny(call("search_issues", { query: "is:open", owner: "acme" })))
+  eq("search query text cannot escape scope", true,
+    deny(call("search_issues", { query: "repo:evil/x is:open", owner: "acme" })))
+  eq("get_me stays allowed", false, deny(call("get_me", {})))
+  const empty = mkBlockedReason(true, parseScope(""))
+  eq("empty scope is deny-all", true, empty(call("list_issues", { owner: "acme", repo: "lib" })))
+  eq("empty scope still allows get_me", false, empty(call("get_me", {})))
+  eq("no scope = no scope check", false, mkBlockedReason(false, [])(call("list_issues", { owner: "evil", repo: "x" })))
+  console.log("selftest ok")
+  process.exit(0)
 }
 
 // Schema lock - identity check only. The hosted endpoint reports its own

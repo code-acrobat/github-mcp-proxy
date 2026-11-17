@@ -79,21 +79,26 @@ rules file) and point only trusted clients at it.
 
 `GITHUB_MCP_SCOPE` optionally narrows which repositories sessions can
 touch: a comma list of `owner` or `owner/repo` entries, e.g.
-`GITHUB_MCP_SCOPE=your-login`. When set, a `tools/call` whose
-`owner`/`org`/`organization` does not match an entry is refused
-locally, and calls without a repository subject are refused too -
-except `get_me` and `create_repository`, which only ever describe or
-touch the authenticated account. That takes the roaming `search_*`
-tools and the global advisory readers with it, which is the point: an
-agent steered at someone else's repository fails locally instead of
-fetching it. Bare `owner` entries cover all of that owner's repos plus
-its org-wide tools; `owner/repo` narrows repo calls to one repository
-(org-wide tools then need a bare entry alongside, e.g.
-`you/you-repo,you`). The key present with an empty or separator-only
-value stays active with an empty allowlist: every repository call is
-refused (deny-all) rather than silently unscoped, while
-`get_me`/`create_repository` keep working so the misconfiguration is
-obvious at first use. Like readonly this is host-side and cannot be
+`GITHUB_MCP_SCOPE=your-login`. When set, every `owner`/`org`/
+`organization` a `tools/call` names must match an entry - all of them,
+so a call that carries two subjects (`fork_repository` names the source
+owner and the destination `organization`) is refused unless both are in
+scope. Calls without any subject are refused too, except `get_me`;
+`create_repository` reaches the authenticated account only when it names
+an `organization` that is in scope, so it cannot create a personal repo
+around the boundary. The free-text query tools (`search_issues`,
+`search_pull_requests`) are refused outright while a scope is active:
+their query can name any repository, which no argument check can
+confine. That takes the roaming `search_*` tools and the global advisory
+readers with it, which is the point: an agent steered at someone else's
+repository fails locally instead of fetching it. Bare `owner` entries
+cover all of that owner's repos plus its org-wide tools; `owner/repo`
+narrows repo calls to one repository (org-wide tools then need a bare
+entry alongside, e.g. `you/you-repo,you`). The key present with an empty
+or separator-only value stays active with an empty allowlist: every
+repository call is refused (deny-all) rather than silently unscoped,
+while `get_me` keeps working so the misconfiguration is obvious at first
+use. Like readonly this is host-side and cannot be
 lifted by a client; unlike readonly, `tools/list` stays unchanged (the
 proxy never filters responses) - out-of-scope tools simply refuse when
 called. Hobby baseline: `GITHUB_MCP_SCOPE=<your-login>`.
