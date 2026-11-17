@@ -112,12 +112,9 @@ if [ -f "$RULES" ]; then RULESAVE="$(mktemp)"; cp "$RULES" "$RULESAVE"; fi
 restore_env() {
   if [ "$HADENV" = 1 ]; then cp "$ENVSAVE" "$ENVF"; else rm -f "$ENVF"; fi
   rm -f "$ENVSAVE"
-  # the walk leaves its last profile installed and stamped for the walk policy:
-  # put the caller's rules back and bring the proxy up on them, or the next start
-  # locks on a policy mismatch
+  # the walk leaves its own profile installed: put the caller's rules back
   if [ -n "$RULESAVE" ]; then cp "$RULESAVE" "$RULES"; rm -f "$RULESAVE"; fi
-  # the control script's pid() matches any proxy, not this port: kill whatever is
-  # left, or the walk's own instance keeps serving 3719 after it exits
+  # pid() matches any proxy, not this port: kill leftovers too
   for p in $(pgrep -f 'github-mcp-proxy\.mjs' 2>/dev/null); do kill "$p" 2>/dev/null; done
   for _ in {1..10}; do
     pgrep -f 'github-mcp-proxy\.mjs' >/dev/null 2>&1 || break
@@ -133,8 +130,7 @@ mkdir -p "$(dirname "$ENVF")"
 # ship current files, then walk the profiles (a fresh HOME has no ~/.local/bin)
 mkdir -p "$BIN"
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
-# every profile has to be stamped for the policy of this walk, or the schema
-# lock refuses the calls the walk is about to assert on
+# each profile needs a stamp for this walk's policy, or the lock refuses the assertions
 stampit() { node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null || { echo "FAIL stamp"; FAIL=1; }; }
 stampit
 echo "== hobby (shipped) =="
