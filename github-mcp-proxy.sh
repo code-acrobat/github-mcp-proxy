@@ -22,21 +22,30 @@ case "${1:-}" in
     if [ -n "$(pid)" ]; then echo "already running (pid $(pid))"; exit 0; fi
     mkdir -p "$(dirname "$LOG")"
     nohup node ~/.local/bin/"$SELF" >>"$LOG" 2>&1 &
-    sleep 0.3
-    [ -n "$(pid)" ] && echo "up (pid $(pid)), log $LOG" || { echo "start failed, see $LOG"; exit 1; }
+    # the pid exists before the listener does: wait for the port, not the process
+    ready=""
+    for _ in {1..25}; do
+      curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/mcp" && { ready=1; break; }
+      sleep 0.2
+    done
+    if [ -z "$(pid)" ]; then echo "start failed, see $LOG"; exit 1; fi
+    [ -n "$ready" ] && echo "up (pid $(pid)), log $LOG" || { echo "pid $(pid) but :$PORT does not answer yet, see $LOG"; exit 1; }
     ;;
   down)
     if [ -z "$(pid)" ]; then echo "not running"; exit 0; fi
     kill $(pid)
     # wait for exit: a still-dying pid makes the next `up` bail with
     # "already running" and start nothing
-    for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(pid)" ] && break; sleep 0.2; done
+    for _ in {1..10}; do [ -z "$(pid)" ] && break; sleep 0.2; done
     echo "stopped"
     ;;
   status)
     if [ -z "$(pid)" ]; then echo "down"; exit 1; fi
-    printf 'up (pid %s), port %s: %s\n' "$(pid)" "$PORT" \
-      "$(curl -s -o /dev/null -m 3 -w '%{http_code}' -X POST http://127.0.0.1:$PORT/mcp || echo unreachable)"
+    # a real initialize: an empty POST is answered 415 by the proxy itself
+    code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/mcp" \
+      -H 'content-type: application/json' \
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"status","version":"0"}}}') || code=unreachable
+    printf 'up (pid %s), port %s: %s\n' "$(pid)" "$PORT" "$code"
     ;;
   *) echo "usage: $0 up|down|status" >&2; exit 2 ;;
 esac
