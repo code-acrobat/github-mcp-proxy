@@ -181,13 +181,14 @@ check "scope foreign owner" "$LIX" blocked
 check "scope org-wide needs bare owner" "$ORGADV" blocked
 check "scope roaming search" "$SEARCH" blocked
 check "scope get_me allowed" "$GETME" forward
-check "scope create own repo" "$MKREPO" forward
+check "scope create_repository without an organization refused" "$MKREPO" blocked
 
 echo "== empty GITHUB_MCP_SCOPE denies rather than unscopes =="
 printf 'GITHUB_MCP_SCOPE=\n' > "$ENVF"
 restart
 grep 'scope:' "$LOG" | tail -1
 check "empty scope -> repo call denied" "$LI1" blocked
+check "empty scope -> create_repository denied" "$MKREPO" blocked
 check "empty scope -> get_me still allowed" "$GETME" forward
 
 echo "== schema lock covers batched tools/call =="

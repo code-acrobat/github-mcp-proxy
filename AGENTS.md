@@ -27,9 +27,13 @@ link across instead of copying text.
   `x-mcp-readonly: true`; both overwrite any client header (the host
   owns policy; a configured toolset list is a hard ceiling, clients
   cannot expand it), and a present `GITHUB_MCP_SCOPE` (even empty =
-  deny-all) refuses out-of-scope `tools/call` inside `blockedReason`
-  (owner/org/organization must match an entry; owner-less calls only
-  `get_me`/`create_repository`).
+  deny-all) refuses out-of-scope `tools/call` inside `blockedReason`:
+  *every* `owner`/`org`/`organization` argument must match an entry
+  (`fork_repository`'s destination org included), subject-less calls are
+  refused except `get_me`, `create_repository` needs an in-scope
+  `organization`, and the free-text query tools (`search_issues`,
+  `search_pull_requests`) are refused outright - their query can name
+  any repository.
   Content-length stays intact; SSE
   responses stream through unbuffered. Blocked calls get a local `200`
   JSON-RPC error
@@ -89,6 +93,7 @@ itself; read those instead of restating them here.
 ```sh
 node --check github-mcp-proxy.mjs
 for f in github-mcp-proxy.sh tests/*.sh; do bash -n "$f"; done
+node github-mcp-proxy.mjs --selftest   # policy logic: scope args, subjects, empty scope
 tests/validate.sh   # offline: no network, no proxy
 tests/e2e.sh        # live: installs files to ~/.local/bin, walks all
                     # three profiles, restores the shipped rules; needs
