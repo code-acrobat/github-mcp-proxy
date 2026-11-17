@@ -259,6 +259,11 @@ github-mcp-proxy.sh stamp      # re-baseline identity + inventory + policy
 github-mcp-proxy.sh down && up
 ```
 
+If a session reports blocked GitHub calls, the repair is three commands —
+`github-mcp-proxy.sh check`, `stamp`, `down && up` — with the reasoning and the
+exceptions written up in [AGENTS.md](AGENTS.md#drift-and-recovery-the-advice-a-session-can-follow)
+so an agent can follow it without a human who knows the project.
+
 `GITHUB_MCP_SCHEMA_LOCK=off` restores the old behaviour (identity check only,
 rules forwarded as written); the rules-drift skill remains the offline review of
 what a new inventory means for the deny lists. Profiles under

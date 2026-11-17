@@ -279,7 +279,8 @@ if (process.argv.includes("--check")) {
     console.log(`upstream: ${info.name ?? "?"} ${info.version}  latest release ${release ?? "unresolved"}`)
     console.log(`inventory: ${live.length} live / ${stampedTools.length} stamped — +${added.length} [${fmtList(added) || "-"}] -${gone.length} [${fmtList(gone) || "-"}]`)
     console.log(`policy  : stamped ${JSON.stringify(rulesCfg?.snapshot ?? null)} now ${JSON.stringify(policyNow())}`)
-    process.exit(0)
+    const drift = added.length || gone.length || !samePolicy(rulesCfg?.snapshot, policyNow())
+    process.exit(drift ? 1 : 0)
   } catch (e) {
     console.error(`check failed: ${e.message}`)
     process.exit(1)
@@ -308,14 +309,15 @@ if (!lockOff) {
   else if (!rulesCfg?.schema) lockReason = 'rules are not stamped with the upstream identity — set "schema": "<server>@<build>" via github-mcp-proxy.sh stamp'
   else if (!snapshot?.length) lockReason = 'rules carry no "tools" inventory snapshot — run github-mcp-proxy.sh stamp, then restart'
   else if (!samePolicy(then, policyNow()))
-    lockReason = `policy changed since the rules were stamped (${JSON.stringify(then)} -> ${JSON.stringify(policyNow())}) — the registered inventory differs; re-stamp, then restart`
+    lockReason = `policy changed since the rules were stamped (${JSON.stringify(then)} -> ${JSON.stringify(policyNow())}) — the registered inventory differs; re-stamp, then restart (see AGENTS.md "Drift and recovery")`
   else {
     let lastErr = null
     for (let attempt = 0; attempt < 3 && !lockReason; attempt++) {
       try {
         const { tok, info, live } = await openSession()
-        if (info.name && info.name !== "github-mcp-server") {
-          lockReason = `upstream identifies as ${info.name}, expected github-mcp-server`
+        const stampedName = String(rulesCfg?.schema ?? "").split("@")[0]
+        if (info.name && stampedName && info.name !== stampedName) {
+          lockReason = `upstream identifies as ${info.name}, rules were stamped for ${stampedName} — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up (see AGENTS.md "Drift and recovery")`
           break
         }
         if (pinned && normBuild(info.version, info.name) !== normV(pinned)) {
@@ -334,7 +336,7 @@ if (!lockOff) {
         else if (!release) console.log("note: upstream releases unreachable at startup (inventory check still applies)")
         const { added, gone } = inventoryDiff(snapshot, live)
         if (added.length || gone.length)
-          lockReason = `tool inventory changed (upstream build ${info.version}): added [${fmtList(added) || "-"}], removed [${fmtList(gone) || "-"}] — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up`
+          lockReason = `tool inventory changed (upstream build ${info.version}): added [${fmtList(added) || "-"}], removed [${fmtList(gone) || "-"}] — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up (see AGENTS.md "Drift and recovery")`
         else console.log(`schema ok: ${live.length} tools match the rules snapshot (upstream ${info.version})`)
         break
       } catch (e) {
@@ -343,7 +345,7 @@ if (!lockOff) {
       }
     }
     if (!lockReason && lastErr)
-      lockReason = `schema check failed: upstream unreachable at startup (${lastErr.message}) — restart once it is reachable, or set GITHUB_MCP_SCHEMA_LOCK=off`
+      lockReason = `schema check failed: upstream unreachable at startup (${lastErr.message}) — restart once it is reachable, or set GITHUB_MCP_SCHEMA_LOCK=off (see AGENTS.md "Drift and recovery")`
   }
 }
 if (lockReason) console.log(`schema LOCKED: ${lockReason}; tools/call denied until the endpoint is back or you restart`)
