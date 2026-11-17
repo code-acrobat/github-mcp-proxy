@@ -117,7 +117,9 @@ restore_env() {
   # put the caller's rules back and bring the proxy up on them, or the next start
   # locks on a policy mismatch
   if [ -n "$RULESAVE" ]; then cp "$RULESAVE" "$RULES"; rm -f "$RULESAVE"; fi
-  "$BIN/github-mcp-proxy.sh" down >/dev/null 2>&1
+  # the control script's pid() matches any proxy, not this port: kill whatever is
+  # left, or the walk's own instance keeps serving 3719 after it exits
+  for p in $(pgrep -f 'github-mcp-proxy\.mjs' 2>/dev/null); do kill "$p" 2>/dev/null; done
 }
 # a killed walk must still restore: EXIT alone never fires on SIGTERM
 trap 'exit 130' INT TERM
@@ -125,7 +127,8 @@ trap restore_env EXIT
 mkdir -p "$(dirname "$ENVF")"
 : > "$ENVF"   # profile walk runs on upstream defaults, whatever the user had
 
-# ship current files, then walk the profiles
+# ship current files, then walk the profiles (a fresh HOME has no ~/.local/bin)
+mkdir -p "$BIN"
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
 chmod +x "$BIN/github-mcp-proxy.mjs" "$BIN/github-mcp-proxy.sh"
 # every profile has to be stamped for the policy of this walk, or the schema
