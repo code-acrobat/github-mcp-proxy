@@ -40,6 +40,8 @@ chmod +x ~/.local/bin/github-mcp-proxy.mjs ~/.local/bin/github-mcp-proxy.sh
 github-mcp-proxy.sh up        # starts it in the background (nohup)
 github-mcp-proxy.sh status    # prints pid + probes the port (exit 1 = down)
 github-mcp-proxy.sh down
+github-mcp-proxy.sh check     # release / inventory / policy drift (exit 1 = drift)
+github-mcp-proxy.sh stamp     # re-baseline after installing a profile or changing policy
 ```
 
 Opt-in: extra upstream toolsets for every client of this proxy (the

@@ -1,5 +1,5 @@
 #!/bin/bash
-# up | down | status for the GitHub MCP loopback proxy (github-mcp-proxy.mjs)
+# up | down | status | stamp | check for the GitHub MCP loopback proxy (github-mcp-proxy.mjs)
 set -u
 SELF=github-mcp-proxy.mjs
 PORT=3719

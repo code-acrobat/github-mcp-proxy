@@ -14,9 +14,16 @@ safeguards").
 
 ## Why the drift check is mandatory
 
-Deny rules fail **open**: if upstream renames a tool or an argument, the
-rule silently stops matching and everything forwards again. So every
-setup - including re-runs - does the check below before installing.
+Deny rules are name-based, so they only match what they were written against:
+
+- a **renamed or added tool** is caught by the proxy's schema lock at startup
+  (the rules carry the inventory they were stamped against) - the endpoint
+  refuses calls until it is re-stamped and restarted;
+- a **renamed argument** is NOT caught: the tool name is unchanged, so the
+  inventory still matches and a `deny_calls` rule silently stops matching.
+
+So the check below is still what reviews a *new* inventory before you accept it,
+and it is the only thing that sees argument drift.
 
 ## Step 1 - prerequisites
 
@@ -106,10 +113,17 @@ prints `rules valid against live schema`.
 
 ```sh
 cp <chosen-profile>.json ~/.local/bin/github-mcp-proxy.rules.json   # profiles/ next to this file
+github-mcp-proxy.sh stamp           # profiles carry no snapshot: stamp this policy + inventory
 github-mcp-proxy.sh down && github-mcp-proxy.sh up
-grep rules: /tmp/opencode/github-mcp-proxy.log | tail -1
-# expect: rules: N deny_tools, M deny_calls active (schema github/github-mcp-server@...)
+grep -E 'rules:|schema ' /tmp/opencode/github-mcp-proxy.log | tail -2
+# expect: rules: N deny_tools, M deny_calls active (schema …)
+#         schema ok: K tools match the rules snapshot (upstream …)
 ```
+
+Skipping the `stamp` leaves the proxy **locked** on the next start — the profiles
+deliberately ship without an inventory snapshot, because the policy they will run
+under is your choice, not theirs. `github-mcp-proxy.sh check` shows release,
+inventory and policy drift in one pass.
 
 Behavior probe (must be blocked locally, never forwarded):
 

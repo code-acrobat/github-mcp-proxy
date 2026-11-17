@@ -1,16 +1,24 @@
 #!/bin/bash
 # Live: walks all three profiles through the installed proxy and asserts
 # block/forward behavior (deny_tools, deny_calls arg matching, malformed
-# entry handling), then restores the shipped rules.
+# entry handling). Every profile is stamped for the walk's policy first (the
+# schema lock refuses calls otherwise). Preconditions: no other proxy may hold
+# :3719 (the walk owns the port for its duration); on exit the caller's env file,
+# rules file and installed copy are restored and the proxy is left stopped.
 # Needs: proxy files installed in ~/.local/bin, `gh` logged in on the host,
 # network reachability for the forwarded probes. Exit 0 = all green.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 BIN="$HOME/.local/bin"
 S=skills/github-mcp-proxy-rules
 P=http://127.0.0.1:3719/mcp
 LOG=${GITHUB_MCP_PROXY_LOG:-/tmp/opencode/github-mcp-proxy.log}
 FAIL=0
+
+if (exec 3<>/dev/tcp/127.0.0.1/3719) 2>/dev/null; then
+  echo "FAIL :3719 is already in use — stop that proxy first ($BIN/github-mcp-proxy.sh down): the walk owns the port while it runs"
+  exit 1
+fi
 
 restart() {
   "$BIN/github-mcp-proxy.sh" down >/dev/null 2>&1
@@ -22,8 +30,7 @@ restart() {
 # `up` returns once the pid exists, but the proxy only listens after its
 # startup schema-lock probe upstream, so poll until the port accepts.
 wait_up() {
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  for _ in {1..20}; do
     if (exec 3<>/dev/tcp/127.0.0.1/3719) 2>/dev/null; then return 0; fi
     sleep 0.5
   done
@@ -98,16 +105,34 @@ BATCHGET='[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"met
 ENVF="$HOME/.config/github-mcp-proxy/env"
 ENVSAVE=$(mktemp) HADENV=0
 [ -r "$ENVF" ] && { cp "$ENVF" "$ENVSAVE"; HADENV=1; }
+RULES="$BIN/github-mcp-proxy.rules.json"
+RULESAVE=""
+if [ -f "$RULES" ]; then RULESAVE="$(mktemp)"; cp "$RULES" "$RULESAVE"; fi
+
 restore_env() {
   if [ "$HADENV" = 1 ]; then cp "$ENVSAVE" "$ENVF"; else rm -f "$ENVF"; fi
   rm -f "$ENVSAVE"
+  # the walk leaves its own profile installed: put the caller's rules back
+  if [ -n "$RULESAVE" ]; then cp "$RULESAVE" "$RULES"; rm -f "$RULESAVE"; fi
+  # pid() matches any proxy, not this port: kill leftovers too
+  for p in $(pgrep -f 'github-mcp-proxy\.mjs' 2>/dev/null); do kill "$p" 2>/dev/null; done
+  for _ in {1..10}; do
+    pgrep -f 'github-mcp-proxy\.mjs' >/dev/null 2>&1 || break
+    sleep 0.2
+  done
 }
+# a killed walk must still restore: EXIT alone never fires on SIGTERM
+trap 'exit 130' INT TERM
 trap restore_env EXIT
 mkdir -p "$(dirname "$ENVF")"
 : > "$ENVF"   # profile walk runs on upstream defaults, whatever the user had
 
-# ship current files, then walk the profiles
+# ship current files, then walk the profiles (a fresh HOME has no ~/.local/bin)
+mkdir -p "$BIN"
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
+# each profile needs a stamp for this walk's policy, or the lock refuses the assertions
+stampit() { node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null || { echo "FAIL stamp"; FAIL=1; }; }
+stampit
 echo "== hobby (shipped) =="
 restart
 check "hobby approve" "$APPROVE" blocked
@@ -121,6 +146,7 @@ check "hobby unparseable body refused" '{not json' blocked
 
 echo "== corporate-agentic =="
 cp "$S/profiles/corporate-agentic.json" "$BIN/github-mcp-proxy.rules.json"
+stampit
 restart
 check "agentic approve" "$APPROVE" blocked
 check "agentic merge" "$MERGE" blocked
@@ -129,6 +155,7 @@ check "agentic get_pr" "$GETPR" forward
 
 echo "== corporate-assisted =="
 cp "$S/profiles/corporate-assisted.json" "$BIN/github-mcp-proxy.rules.json"
+stampit
 restart
 check "assisted approve" "$APPROVE" blocked
 check "assisted push main" "$PUSHMAIN" blocked
@@ -136,11 +163,13 @@ check "assisted push feature" "$PUSHFEAT" forward
 check "assisted merge" "$MERGE" forward
 
 echo "== malformed deny_tools entry is dropped, not applied =="
+printf 'GITHUB_MCP_SCHEMA_LOCK=off\n' > "$ENVF"   # the file below has no snapshot on purpose
 printf '%s' '{"schema":"test","deny_tools":["merge_pull_request",42]}' > "$BIN/github-mcp-proxy.rules.json"
 restart | sed 's/^/  log: /'
 check "malformed-file merge still blocked (valid entry kept)" "$MERGE" blocked
 
 echo "== restore hobby =="
+: > "$ENVF"   # upstream defaults again, matching the shipped rules
 cp github-mcp-proxy.rules.json "$BIN/"
 restart
 check "restore approve" "$APPROVE" blocked
@@ -148,6 +177,7 @@ check "restore merge" "$MERGE" forward
 
 echo "== GITHUB_MCP_TOOLSETS opt-in (host-forced, hard ceiling) =="
 printf 'GITHUB_MCP_TOOLSETS=default,actions\n' > "$ENVF"
+stampit
 restart
 grep 'toolsets:' "$LOG" | tail -1
 LIST=$(tools_list)
@@ -159,12 +189,14 @@ check_list "client cannot expand toolsets" "$LIST" get_repository_tree absent
 
 echo "== empty GITHUB_MCP_TOOLSETS still blocks client headers =="
 printf 'GITHUB_MCP_TOOLSETS=\n' > "$ENVF"
+stampit
 restart
 LIST=$(tools_list -H 'x-mcp-toolsets: git')
 check_list "empty configured toolsets -> client header ignored" "$LIST" get_repository_tree absent
 
 echo "== GITHUB_MCP_READONLY =="
 printf 'GITHUB_MCP_TOOLSETS=default,actions\nGITHUB_MCP_READONLY=1\n' > "$ENVF"
+stampit
 restart
 grep 'readonly' "$LOG" | tail -1
 LIST=$(tools_list)
