@@ -234,6 +234,12 @@ function normBuild(v, name) {
   const n = String(name || "github-mcp-server")
   return normV(String(v ?? "").replace(new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`), ""))
 }
+// Everything the lock and `check` need to know about the live upstream, computed once.
+async function driftReport({ tok, info, live, snapshotTools }) {
+  const release = await latestRelease(tok)
+  const { added, gone } = inventoryDiff(snapshotTools, live)
+  return { release, added, gone, policySame: samePolicy(rulesCfg?.snapshot, policyNow()) }
+}
 function samePolicy(stamped, now) {
   if (!stamped) return true
   return (stamped.toolsets ?? null) === (now.toolsets ?? null) && Boolean(stamped.readonly) === Boolean(now.readonly)
@@ -278,14 +284,13 @@ if (process.argv.includes("--stamp")) {
 if (process.argv.includes("--check")) {
   try {
     const { tok, info, live } = await openSession()
-    const release = await latestRelease(tok)
     const stampedTools = Array.isArray(rulesCfg?.tools) ? rulesCfg.tools : []
-    const { added, gone } = inventoryDiff(stampedTools, live)
+    const { release, added, gone, policySame } = await driftReport({ tok, info, live, snapshotTools: stampedTools })
     console.log(`stamped : ${rulesCfg?.schema ?? "(no stamp)"}${rulesCfg?.build ? `  build ${rulesCfg.build}` : ""}`)
     console.log(`upstream: ${info.name ?? "?"} ${info.version}  latest release ${release ?? "unresolved"}`)
     console.log(`inventory: ${live.length} live / ${stampedTools.length} stamped — +${added.length} [${fmtList(added) || "-"}] -${gone.length} [${fmtList(gone) || "-"}]`)
     console.log(`policy  : stamped ${JSON.stringify(rulesCfg?.snapshot ?? null)} now ${JSON.stringify(policyNow())}`)
-    const drift = added.length || gone.length || !samePolicy(rulesCfg?.snapshot, policyNow())
+    const drift = added.length || gone.length || !policySame
     process.exit(drift ? 1 : 0)
   } catch (e) {
     console.error(`check failed: ${e.message}`)
@@ -333,14 +338,13 @@ if (!lockOff) {
           lockReason = `upstream build ${info.version} != pinned GITHUB_MCP_UPSTREAM_VERSION ${pinned} — ${hint}`
           break
         }
-        const release = await latestRelease(tok)
+        const { release, added, gone } = await driftReport({ tok, info, live, snapshotTools: snapshot })
         const stampedLabel = String(rulesCfg?.schema ?? "")
         if (release && /@v?\d/.test(stampedLabel) && !stampedLabel.endsWith(`@${release}`))
           console.log(
             `note: upstream published ${release}, rules were stamped ${stampedLabel.split("@").pop()} — inventory unchanged, so nothing is refused; run \`github-mcp-proxy.sh check\` and re-stamp when a release actually changes tools`,
           )
         else if (!release) console.log("note: upstream releases unreachable at startup (inventory check still applies)")
-        const { added, gone } = inventoryDiff(snapshot, live)
         if (added.length || gone.length)
           lockReason = `tool inventory changed (upstream build ${info.version}): added [${fmtList(added) || "-"}], removed [${fmtList(gone) || "-"}] — re-run the rules drift check, then github-mcp-proxy.sh stamp && down && up`
         else console.log(`schema ok: ${live.length} tools match the rules snapshot (upstream ${info.version})`)
