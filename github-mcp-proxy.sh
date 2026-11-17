@@ -17,7 +17,16 @@ LOG="${GITHUB_MCP_LOG:-$STATE/github-mcp-proxy-$PORT.log}"
 # match the proxy process only: argv[0] ends in `node` (mise shim execs the
 # real binary path), argv[1] is exactly this script; a shell running
 # `node --check github-mcp-proxy.mjs` or an editor mentioning the file never matches
-pid() { pgrep -f "^(.*/)?node [^ ]*/github-mcp-proxy\.mjs$"; }
+# instance identity = the listener on $PORT whose cmdline is the proxy
+pid() {
+  local p
+  command -v lsof > /dev/null 2>&1 || { echo "lsof missing: cannot identify the instance on :$PORT (Alpine: apk add lsof)" >&2; return 0; }
+  p="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  [ -n "${p:-}" ] || return 0
+  ps -o command= -p "$p" 2>/dev/null | grep -q 'github-mcp-proxy\.mjs' || return 0
+  printf '%s' "$p"
+}
+
 
 case "${1:-}" in
   up)
@@ -36,7 +45,7 @@ case "${1:-}" in
     ;;
   down)
     if [ -z "$(pid)" ]; then echo "not running"; exit 0; fi
-    kill $(pid)
+    kill "$(pid)"
     # wait for exit: a still-dying pid makes the next `up` bail with
     # "already running" and start nothing
     for _ in {1..10}; do [ -z "$(pid)" ] && break; sleep 0.2; done
