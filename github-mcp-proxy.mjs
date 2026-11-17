@@ -245,6 +245,12 @@ function fmtList(l) {
 // --stamp re-baselines the rules against the live upstream: identity + inventory.
 // It needs a reachable upstream but not a passing lock, so it is the recovery path.
 if (process.argv.includes("--stamp")) {
+  if (rulesError && rulesError !== "missing") {
+    console.error(
+      `stamp refused: ${RULES_FILE} is unreadable (${rulesError}) — fix the JSON (or move it aside) and re-run; stamping would replace your rules`,
+    )
+    process.exit(1)
+  }
   try {
     const { tok, info, live } = await openSession()
     const cfg = rulesCfg ?? {}
