@@ -44,32 +44,38 @@ github-mcp-proxy.sh check     # release / inventory / policy drift (exit 1 = dri
 github-mcp-proxy.sh stamp     # re-baseline after installing a profile or changing policy
 ```
 
-Opt-in: extra upstream toolsets for every client of this proxy (the
-default set has no Actions tools), and a host-enforced read-only mode:
+Host-side curation: the toolset list every client of this proxy gets
+(upstream's `default` set plus the advisory lookups on top, Actions
+opt-in), and a host-enforced read-only mode:
 
 ```sh
 mkdir -p ~/.config/github-mcp-proxy
 cat > ~/.config/github-mcp-proxy/env <<'EOF'
-GITHUB_MCP_TOOLSETS=default,actions
+GITHUB_MCP_TOOLSETS=default,actions,security_advisories
 GITHUB_MCP_READONLY=1
 EOF
 github-mcp-proxy.sh down && github-mcp-proxy.sh up   # env is read at up
+github-mcp-proxy.sh stamp                            # a toolset change is an inventory change
 ```
 
 `GITHUB_MCP_TOOLSETS` is a comma list forwarded upstream as the
 `x-mcp-toolsets` header; `default` keeps the standard set, and the
 remaining names come from the upstream server (`actions`, `git`, `orgs`,
-`governance`, `code_security`, ...; `all` enables everything). When the
-key is present it overrides a client-supplied header: the configured
-list is a hard ceiling a client can never expand - a present-but-empty
-value still blocks client headers (upstream then serves its default
-toolsets). When the key is absent, a client header passes through
-unchanged. Without the opt-in the proxy forwards upstream's default
-toolsets, as before.
+`governance`, `code_security`, `security_advisories`, ...; `all` enables
+everything). `security_advisories` is on by default here: absent key
+means the proxy injects its curated list, `default,security_advisories`
+- the four advisory tools (`list_global_security_advisories`,
+`get_global_security_advisory`, `list_repository_security_advisories`,
+`list_org_repository_security_advisories`) answer CVE triage without
+per-install ceremony. Any configured value overrides that default and is
+a hard ceiling a client can never expand; a present-but-empty value
+serves upstream's default toolsets. Either way `x-mcp-toolsets` is
+injected, so a client-supplied header never passes through.
 
 `GITHUB_MCP_READONLY=1` injects `x-mcp-readonly: true` for every
-session. Upstream then registers only read tools: with
-`default,actions` that is 31 of the 50 tools, and every write-shaped
+session. Upstream then registers only read tools (with
+`default,actions,security_advisories` every advisory tool survives too —
+all four are reads), and every write-shaped
 tool is gone (`push_files`, `issue_write`, `merge_pull_request`,
 `actions_run_trigger`, the `create_*`/`delete_*` tools). The header is
 overwritten, never merged, so no client can lift it - unlike deny
@@ -100,7 +106,13 @@ entry alongside, e.g. `you/you-repo,you`). The key present with an empty
 or separator-only value stays active with an empty allowlist: every
 repository call is refused (deny-all) rather than silently unscoped,
 while `get_me` keeps working so the misconfiguration is obvious at first
-use. Like readonly this is host-side and cannot be
+use. The two global advisory lookups are exempt as well
+(`list_global_security_advisories`, `get_global_security_advisory`):
+they filter by CVE, GHSA, ecosystem or package and take no
+`owner`/`repo`/`org` argument, so nothing they return can name a
+repository outside the scope. The repo- and org-scoped advisory tools do
+name one and are refused like any other subject. Like readonly this is
+host-side and cannot be
 lifted by a client; unlike readonly, `tools/list` stays unchanged (the
 proxy never filters responses) - out-of-scope tools simply refuse when
 called. Hobby baseline: `GITHUB_MCP_SCOPE=<your-login>`.
@@ -231,7 +243,7 @@ depends on them:
 ```json
 { "schema": "github-mcp-server@remote-<build>",
   "tools": ["add_issue_comment", "…"],
-  "snapshot": { "toolsets": "default,actions", "readonly": false } }
+  "snapshot": { "toolsets": "default,security_advisories", "readonly": false } }
 ```
 
 Any of these locks the endpoint — every `tools/call` is refused, single or in a

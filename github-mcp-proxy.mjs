@@ -11,12 +11,9 @@ import { basename, join } from "node:path"
 
 const PORT = Number(process.env.PORT || 3719)
 const TARGET = new URL(process.env.GITHUB_MCP_URL || "https://api.githubcopilot.com/mcp/")
-// Opt-in upstream toolsets (e.g. "default,actions"): injected as x-mcp-toolsets.
-// Host-side policy: the key present (even empty) overrides any client header -
-// a configured list is a hard ceiling a client can never expand, because the
-// client may be an untrusted sandbox. Key absent = client header passes through.
-const TOOLSETS_SET = process.env.GITHUB_MCP_TOOLSETS !== undefined
-const TOOLSETS = (process.env.GITHUB_MCP_TOOLSETS || "").trim()
+// Toolsets injected as x-mcp-toolsets: the host's list when set (even empty), else the curated default; a client header never expands it.
+const DEFAULT_TOOLSETS = "default,security_advisories"
+const TOOLSETS = (process.env.GITHUB_MCP_TOOLSETS ?? DEFAULT_TOOLSETS).trim()
 // Read-only enforcement: upstream then registers only read tools (write tools
 // are never offered, so nothing can call them - stronger than deny rules,
 // which fail open on drift). Forced: the client cannot lift it, because the
@@ -26,7 +23,7 @@ const READONLY = /^(1|true|yes|on)$/i.test((process.env.GITHUB_MCP_READONLY || "
 // Repo scope: comma list of `owner` or `owner/repo` entries (e.g. "me,my-org/my-repo").
 // Key present (even empty) = active: a tools/call must name an owner/org/
 // organization that matches an entry, and calls without a repository subject
-// are refused except the two account-true tools in SCOPE_OK; an empty list
+// are refused except the ones in SCOPE_OK; an empty list
 // matches nothing, so a truncated config denies instead of unscoping. Fail
 // closed regardless of upstream tool drift, unlike name-based deny rules.
 const SCOPE_SET = process.env.GITHUB_MCP_SCOPE !== undefined
@@ -42,14 +39,13 @@ const parseScope = (raw) =>
         : { owner: e.slice(0, i).toLowerCase(), repo: e.slice(i + 1).toLowerCase() }
     })
 const SCOPE = parseScope(SCOPE_RAW)
-// Subject-less calls allowed under a scope: get_me only. Everything else
-// either names a subject (checked) or is refused.
-const SCOPE_OK = new Set(["get_me"])
+// Subject-less calls allowed under a scope: get_me, plus the two global advisory lookups (they filter by CVE/GHSA/package, never by owner).
+const SCOPE_OK = new Set(["get_me", "list_global_security_advisories", "get_global_security_advisory"])
 // Free-text query tools: the query can name any repository, so no argument
 // check can confine them. Refused while a scope is active.
 const SCOPE_REFUSED = new Set(["search_issues", "search_pull_requests"])
 const FLAGS = [
-  TOOLSETS_SET && `toolsets: ${TOOLSETS}`,
+  `toolsets: ${TOOLSETS}`,
   READONLY && "readonly",
   SCOPE_SET && `scope: ${SCOPE_RAW}`,
 ].filter(Boolean).join(", ")
@@ -143,9 +139,17 @@ if (process.argv.includes("--selftest")) {
   eq("search query text cannot escape scope", true,
     deny(call("search_issues", { query: "repo:evil/x is:open", owner: "acme" })))
   eq("get_me stays allowed", false, deny(call("get_me", {})))
+  eq("global advisory lookup is exempt from the scope", false,
+    deny(call("list_global_security_advisories", { cveId: "CVE-2026-59273", affects: "other-org/pkg@1.0.0" })))
+  eq("repo advisory tools stay subject-checked", true,
+    deny(call("list_repository_security_advisories", { owner: "evil", repo: "x" })))
+  eq("org advisory tools stay subject-checked", true,
+    deny(call("list_org_repository_security_advisories", { org: "evil" })))
   const empty = mkBlockedReason(true, parseScope(""))
   eq("empty scope is deny-all", true, empty(call("list_issues", { owner: "acme", repo: "lib" })))
   eq("empty scope still allows get_me", false, empty(call("get_me", {})))
+  eq("empty scope still allows global advisories", false,
+    empty(call("get_global_security_advisory", { ghsaId: "GHSA-xxxx-yyyy-zzzz" })))
   eq("no scope = no scope check", false, mkBlockedReason(false, [])(call("list_issues", { owner: "evil", repo: "x" })))
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 eq("inventory diff: unchanged", true, same(inventoryDiff(["a", "b"], ["a", "b"]), { added: [], gone: [] }))
@@ -153,13 +157,14 @@ eq("inventory diff: added", true, same(inventoryDiff(["a"], ["a", "b"]), { added
 eq("inventory diff: removed", true, same(inventoryDiff(["a", "b"], ["a"]), { added: [], gone: ["b"] }))
 eq("inventory formatting: short list", true, fmtList(["x"]) === "x")
 eq("inventory formatting: caps long lists", true, fmtList(["1", "2", "3", "4", "5", "6", "7"]) === "1, 2, 3, 4, 5, 6 +1 more")
+eq("curated default keeps advisory lookups on", true, DEFAULT_TOOLSETS.split(",").includes("security_advisories"))
 console.log("selftest ok")
   process.exit(0)
 }
 
 // One place speaks the session protocol: identity + inventory, with the same
 // policy headers a client gets (the registered inventory depends on them).
-const policyNow = () => ({ toolsets: TOOLSETS_SET ? TOOLSETS : null, readonly: READONLY })
+const policyNow = () => ({ toolsets: TOOLSETS, readonly: READONLY })
 const parseFrame = (t) => {
   const line = t.split("\n").find((l) => l.startsWith("data: "))
   return JSON.parse(line ? line.slice(6) : t)
@@ -169,7 +174,7 @@ const policyHeaders = (tok) => ({
   accept: "application/json, text/event-stream",
   authorization: `Bearer ${tok}`,
   "user-agent": "github-mcp-proxy",
-  ...(TOOLSETS_SET ? { "x-mcp-toolsets": TOOLSETS } : {}),
+  "x-mcp-toolsets": TOOLSETS,
   ...(READONLY ? { "x-mcp-readonly": "true" } : {}),
 })
 const UPSTREAM_REPO = process.env.GITHUB_MCP_UPSTREAM_REPO || "github/github-mcp-server"
@@ -426,7 +431,7 @@ http.createServer((req, res) => {
       if (key === "host" || key === "authorization" || HOP.has(key)) continue
       headers[k] = v
     }
-    if (TOOLSETS_SET) headers["x-mcp-toolsets"] = TOOLSETS // overwrite (even empty): configured ceiling, client cannot expand
+    headers["x-mcp-toolsets"] = TOOLSETS // overwrite (even empty): host curation, a client cannot expand it
     if (READONLY) headers["x-mcp-readonly"] = "true" // overwrite: client cannot lift it
     try {
       headers.authorization = `Bearer ${token()}`
