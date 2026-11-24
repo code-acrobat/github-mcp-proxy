@@ -70,15 +70,19 @@ Rule of thumb for agents: **`check` → read the diff → `stamp` → `down && u
 - **Request flow:** buffer body -> browser guard (`Origin` or
   `Sec-Fetch-Site` present -> 403 text/plain) -> JSON parse -> policy
   check -> inject `Authorization: Bearer $(gh auth token)` -> forward raw
-  bytes. A present `GITHUB_MCP_TOOLSETS` (even empty) injects
-  `x-mcp-toolsets` and `GITHUB_MCP_READONLY=1` injects
+  bytes. `x-mcp-toolsets` is always injected: `GITHUB_MCP_TOOLSETS` when
+  set (even empty), else the curated `DEFAULT_TOOLSETS` =
+  `default,security_advisories` (advisory lookups are on by default);
+  `GITHUB_MCP_READONLY=1` injects
   `x-mcp-readonly: true`; both overwrite any client header (the host
   owns policy; a configured toolset list is a hard ceiling, clients
   cannot expand it), and a present `GITHUB_MCP_SCOPE` (even empty =
   deny-all) refuses out-of-scope `tools/call` inside `blockedReason`:
   *every* `owner`/`org`/`organization` argument must match an entry
   (`fork_repository`'s destination org included), subject-less calls are
-  refused except `get_me`, `create_repository` needs an in-scope
+  refused except `get_me` and the two global advisory lookups
+  (`list_global_security_advisories`, `get_global_security_advisory` -
+  no owner/org/repo argument, so no repository can be named), `create_repository` needs an in-scope
   `organization`, and the free-text query tools (`search_issues`,
   `search_pull_requests`) are refused outright - their query can name
   any repository.

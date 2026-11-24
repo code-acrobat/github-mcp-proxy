@@ -86,9 +86,13 @@ diff <path-to-this-dir>/tools-list@v1.14.0.json /tmp/ghmcp-live.norm
 
 Report new / changed / removed tools to the user and agree any rule
 changes **before** installing. With the `GITHUB_MCP_TOOLSETS` opt-in
-(README, Install) the live list also carries that toolset's extras (the
-four Actions tools: `actions_*` plus `get_job_logs`); those additions
-are expected and rules can ignore them - only movements among tools the
+(README, Install) the live list also carries that toolset's extras: the
+four Actions tools (`actions_*` plus `get_job_logs`) and, with
+`security_advisories`, the four advisory tools
+(`list_global_security_advisories`, `get_global_security_advisory`,
+`list_repository_security_advisories`,
+`list_org_repository_security_advisories`). Those additions are expected
+and rules can ignore them - only movements among tools the
 rules can name matter.
 
 With `GITHUB_MCP_READONLY=1` (README, Install) the live list omits

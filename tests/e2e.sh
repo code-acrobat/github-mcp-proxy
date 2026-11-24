@@ -97,6 +97,7 @@ LIX='{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"list_issue
 ORGADV='{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"list_org_repository_security_advisories","arguments":{"org":"o"}}}'
 SEARCH='{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"search_code","arguments":{"query":"password"}}}'
 GETME='{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"get_me","arguments":{}}}'
+ADV='{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"list_global_security_advisories","arguments":{"cveId":"CVE-2026-59273"}}}'
 MKREPO='{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"create_repository","arguments":{"name":"n"}}}'
 BATCHGET='[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_pull_request","arguments":{"owner":"o","repo":"r","pullNumber":1}}}]'
 
@@ -125,13 +126,16 @@ restore_env() {
 trap 'exit 130' INT TERM
 trap restore_env EXIT
 mkdir -p "$(dirname "$ENVF")"
-: > "$ENVF"   # profile walk runs on upstream defaults, whatever the user had
+: > "$ENVF"   # profile walk runs on the proxy's curated default, whatever the user had
 
 # ship current files, then walk the profiles (a fresh HOME has no ~/.local/bin)
 mkdir -p "$BIN"
 cp github-mcp-proxy.mjs github-mcp-proxy.sh github-mcp-proxy.rules.json "$BIN/"
-# each profile needs a stamp for this walk's policy, or the lock refuses the assertions
-stampit() { node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null || { echo "FAIL stamp"; FAIL=1; }; }
+# each profile needs a stamp for this walk's policy, or the lock refuses the assertions.
+# Source the env file the section just wrote: `up` does, so the stamp must see it too.
+stampit() {
+  ( set -a; . "$ENVF"; set +a; node "$BIN/github-mcp-proxy.mjs" --stamp >/dev/null ) || { echo "FAIL stamp"; FAIL=1; }
+}
 stampit
 echo "== hobby (shipped) =="
 restart
@@ -168,20 +172,24 @@ printf '%s' '{"schema":"test","deny_tools":["merge_pull_request",42]}' > "$BIN/g
 restart | sed 's/^/  log: /'
 check "malformed-file merge still blocked (valid entry kept)" "$MERGE" blocked
 
-echo "== restore hobby =="
-: > "$ENVF"   # upstream defaults again, matching the shipped rules
+echo "== restore hobby (curated default: no env, advisories on) =="
+: > "$ENVF"
 cp github-mcp-proxy.rules.json "$BIN/"
+stampit
 restart
 check "restore approve" "$APPROVE" blocked
 check "restore merge" "$MERGE" forward
+LIST=$(tools_list)
+check_list "curated default -> advisory tools exposed without an env file" "$LIST" list_global_security_advisories present
 
 echo "== GITHUB_MCP_TOOLSETS opt-in (host-forced, hard ceiling) =="
-printf 'GITHUB_MCP_TOOLSETS=default,actions\n' > "$ENVF"
+printf 'GITHUB_MCP_TOOLSETS=default,actions,security_advisories\n' > "$ENVF"
 stampit
 restart
 grep 'toolsets:' "$LOG" | tail -1
 LIST=$(tools_list)
 check_list "toolsets opt-in -> actions_list exposed" "$LIST" actions_list present
+check_list "toolsets opt-in -> advisory tools exposed" "$LIST" list_global_security_advisories present
 # ceiling: a client asking for other toolsets must not change the set
 LIST=$(tools_list -H 'x-mcp-toolsets: git')
 check_list "env toolsets override client header" "$LIST" actions_list present
@@ -195,7 +203,7 @@ LIST=$(tools_list -H 'x-mcp-toolsets: git')
 check_list "empty configured toolsets -> client header ignored" "$LIST" get_repository_tree absent
 
 echo "== GITHUB_MCP_READONLY =="
-printf 'GITHUB_MCP_TOOLSETS=default,actions\nGITHUB_MCP_READONLY=1\n' > "$ENVF"
+printf 'GITHUB_MCP_TOOLSETS=default,actions,security_advisories\nGITHUB_MCP_READONLY=1\n' > "$ENVF"
 stampit
 restart
 grep 'readonly' "$LOG" | tail -1
@@ -205,6 +213,7 @@ check_list "readonly -> push_files gone" "$LIST" push_files absent
 
 echo "== GITHUB_MCP_SCOPE =="
 printf 'GITHUB_MCP_SCOPE=o/repo1\n' > "$ENVF"
+stampit
 restart
 grep 'scope:' "$LOG" | tail -1
 check "scope own repo" "$LI1" forward
@@ -213,10 +222,12 @@ check "scope foreign owner" "$LIX" blocked
 check "scope org-wide needs bare owner" "$ORGADV" blocked
 check "scope roaming search" "$SEARCH" blocked
 check "scope get_me allowed" "$GETME" forward
+check "scope global advisory lookup allowed" "$ADV" forward
 check "scope create_repository without an organization refused" "$MKREPO" blocked
 
 echo "== empty GITHUB_MCP_SCOPE denies rather than unscopes =="
 printf 'GITHUB_MCP_SCOPE=\n' > "$ENVF"
+stampit
 restart
 grep 'scope:' "$LOG" | tail -1
 check "empty scope -> repo call denied" "$LI1" blocked

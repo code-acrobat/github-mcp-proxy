@@ -21,6 +21,7 @@
     "fork_repository",
     "get_commit",
     "get_file_contents",
+    "get_global_security_advisory",
     "get_label",
     "get_latest_release",
     "get_me",
@@ -32,12 +33,15 @@
     "issue_write",
     "list_branches",
     "list_commits",
+    "list_global_security_advisories",
     "list_issue_fields",
     "list_issue_types",
     "list_issues",
+    "list_org_repository_security_advisories",
     "list_pull_requests",
     "list_releases",
     "list_repository_collaborators",
+    "list_repository_security_advisories",
     "list_tags",
     "merge_pull_request",
     "pull_request_read",
@@ -58,7 +62,7 @@
     "update_pull_request_branch"
   ],
   "snapshot": {
-    "toolsets": null,
+    "toolsets": "default,security_advisories",
     "readonly": false
   },
   "build": "github-mcp-server/remote-0ce1ed67807811c536b24b3c836fb021a3912b62"
